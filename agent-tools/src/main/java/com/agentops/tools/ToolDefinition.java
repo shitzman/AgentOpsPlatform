@@ -3,15 +3,15 @@ package com.agentops.tools;
 import java.util.Map;
 
 /**
- * Describes a tool that can be registered in the {@link ToolRegistry}.
+ * 工具定义 — 描述一个可注册到 {@link ToolRegistry} 的工具元数据。
  *
- * <p>The {@code parameters} map represents a JSON Schema object that defines
- * the tool's input contract. This format is compatible with OpenAI function
- * calling and other LLM tool-use APIs.
+ * <p>{@code parameters} 是一个 JSON Schema 格式的 Map，定义工具的输入参数契约。
+ * 此格式与 OpenAI function calling 以及其他 LLM 的 tool-use API 兼容，
+ * 可以直接序列化为 JSON 传给模型。
  *
- * @param name        unique tool name, stable across registrations
- * @param description human-readable description presented to the LLM
- * @param parameters  JSON Schema describing the tool's input parameters
+ * @param name        工具名称，全局唯一，注册后不可变
+ * @param description 工具描述，展示给 LLM 帮助其理解工具的用途
+ * @param parameters  JSON Schema 描述的工具参数定义
  */
 public record ToolDefinition(
         String name,
@@ -20,13 +20,13 @@ public record ToolDefinition(
 
     public ToolDefinition {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("name must not be blank");
+            throw new IllegalArgumentException("工具名称不能为空");
         }
         if (description == null || description.isBlank()) {
-            throw new IllegalArgumentException("description must not be blank");
+            throw new IllegalArgumentException("工具描述不能为空");
         }
         if (parameters == null) {
-            throw new IllegalArgumentException("parameters must not be null");
+            throw new IllegalArgumentException("参数定义不能为 null");
         }
     }
 }
