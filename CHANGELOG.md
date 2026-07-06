@@ -34,6 +34,17 @@ All notable changes to AgentOps Platform will be documented in this file.
 - 4 类单元测试共 20 个用例：`PromptTemplateTest` / `InMemoryToolRegistryTest` / `SequentialWorkflowEngineTest` / `InMemoryMemoryStoreTest`
 - 集成 SpringDoc OpenAPI（Swagger UI 访问 `/swagger-ui.html`）
 
+## V0.4
+
+### Added
+
+- Git Tool：`git-log`（查看文件提交历史）、`git-blame`（查看行的修改者）、`git-show`（查看 commit 详情）
+- Log Tool：`log-search`（按关键词/服务/时间范围搜索日志，V0.4 模拟实现）
+- 多轮对话：`POST /api/chat` 追问端点，支持 `conversationId` 关联历史对话
+- MemoryStore 持久化对话历史（conversation:* 类型）
+- 启动时自动注册 4 个工具到 ToolRegistry
+- ChatRequest 传入工具定义列表，LLM 可选择调用工具
+
 ### Added
 
 - 实现 `SimpleWorkflowContext` — 基于 LinkedHashMap 的 Workflow 上下文

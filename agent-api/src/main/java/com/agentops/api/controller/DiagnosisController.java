@@ -3,28 +3,32 @@ package com.agentops.api.controller;
 import com.agentops.business.exceptionagent.BusinessExceptionAgent;
 import com.agentops.business.exceptionagent.model.DiagnosisReport;
 import com.agentops.business.exceptionagent.model.StackTrace;
+import com.agentops.memory.MemoryEntry;
+import com.agentops.memory.MemoryStore;
 import com.agentops.prompts.PromptRegistry;
 import com.agentops.runtime.model.ModelClient;
 import com.agentops.runtime.model.ChatMessage;
 import com.agentops.runtime.model.ChatRequest;
 import com.agentops.runtime.model.ChatResponse;
+import com.agentops.tools.ToolRegistry;
 import com.agentops.workflow.SimpleWorkflowContext;
 import com.agentops.workflow.WorkflowContext;
 import com.agentops.workflow.WorkflowEngine;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
- * 诊断 REST API — 接收异常堆栈，返回 LLM 结构化诊断报告。
+ * 诊断 REST API — 支持多轮对话和工具调用。
  *
  * <p>端点：
  * <ul>
- *   <li>POST /api/diagnosis — 提交诊断（核心接口），返回结构化 JSON</li>
- *   <li>GET  /api/health     — 健康检查</li>
+ *   <li>POST /api/diagnosis — 提交诊断（支持多轮对话）</li>
+ *   <li>POST /api/chat       — 多轮对话（追问、工具调用）</li>
+ *   <li>GET  /api/health      — 健康检查</li>
  * </ul>
  */
 @RestController
@@ -34,38 +38,42 @@ public class DiagnosisController {
     private final WorkflowEngine workflowEngine;
     private final ModelClient modelClient;
     private final PromptRegistry promptRegistry;
+    private final ToolRegistry toolRegistry;
+    private final MemoryStore memoryStore;
     private final String modelName;
     private final ObjectMapper objectMapper;
 
     public DiagnosisController(WorkflowEngine workflowEngine,
                                ModelClient modelClient,
                                PromptRegistry promptRegistry,
+                               ToolRegistry toolRegistry,
+                               MemoryStore memoryStore,
                                @Value("${agentops.llm.model:deepseek-chat}") String modelName) {
         this.workflowEngine = workflowEngine;
         this.modelClient = modelClient;
         this.promptRegistry = promptRegistry;
+        this.toolRegistry = toolRegistry;
+        this.memoryStore = memoryStore;
         this.modelName = modelName;
         this.objectMapper = new ObjectMapper();
     }
 
     /**
-     * 提交异常堆栈进行诊断。
+     * 提交异常堆栈进行诊断（支持多轮对话）。
      *
-     * <p>请求示例：
      * <pre>
      * POST /api/diagnosis
-     * Content-Type: application/json
-     *
      * {
-     *   "stackTrace": "java.lang.NullPointerException: ...\n\tat com.agentops..."
+     *   "stackTrace": "java.lang.NullPointerException: ...",
+     *   "conversationId": "uuid-xxx"   // 可选，用于多轮对话
      * }
      * </pre>
-     *
-     * <p>成功响应包含结构化的 {@link DiagnosisReport} JSON。
      */
     @PostMapping("/diagnosis")
     public Map<String, Object> diagnose(@RequestBody Map<String, String> body) {
         String rawStackTrace = body.get("stackTrace");
+        String conversationId = body.get("conversationId");
+
         if (rawStackTrace == null || rawStackTrace.isBlank()) {
             return Map.of("success", false, "error", "缺少 stackTrace 字段");
         }
@@ -76,7 +84,6 @@ public class DiagnosisController {
             context.put(BusinessExceptionAgent.CTX_RAW_STACK_TRACE, rawStackTrace);
             WorkflowContext result = workflowEngine.execute(
                     BusinessExceptionAgent.WORKFLOW_NAME, context);
-
             StackTrace parsed = result.get(BusinessExceptionAgent.CTX_PARSED_TRACE, StackTrace.class);
 
             // 2. 渲染诊断 System Prompt
@@ -86,40 +93,158 @@ public class DiagnosisController {
                     "rawStackTrace", rawStackTrace
             ));
 
-            // 3. 调用 LLM（启用 JSON Mode，强制返回结构化 JSON）
+            // 3. 构建消息列表（含历史对话）
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(ChatMessage.system(systemPrompt));
+
+            // 加载历史对话
+            if (conversationId != null && !conversationId.isBlank()) {
+                loadConversationHistory(conversationId, messages);
+            }
+
+            messages.add(ChatMessage.user("请对以上异常进行诊断分析，只输出 JSON。"));
+
+            // 4. 调用 LLM（带工具）
             ChatRequest request = new ChatRequest(
-                    List.of(
-                            ChatMessage.system(systemPrompt),
-                            ChatMessage.user("请对以上异常进行诊断分析，只输出 JSON。")
-                    ),
-                    List.of(),
+                    messages,
+                    toolRegistry.listDefinitions(),
                     modelName,
                     0.2,
                     2048,
-                    "json_object"   // 启用 JSON Mode
+                    "json_object"
             );
 
             ChatResponse response = modelClient.chat(request);
 
-            // 4. 解析 LLM 返回的 JSON 为 DiagnosisReport
+            // 5. 解析 JSON 为 DiagnosisReport
             DiagnosisReport report = parseDiagnosisReport(response.content(), parsed.exceptionType());
 
-            return Map.of("success", true, "report", report);
+            // 6. 保存对话记录
+            String cid = saveConversation(conversationId, messages,
+                    ChatMessage.assistant(response.content()));
+
+            return Map.of("success", true, "report", report, "conversationId", cid);
         } catch (Exception e) {
-            return Map.of(
-                    "success", false,
-                    "error", e.getMessage()
-            );
+            return Map.of("success", false, "error", e.getMessage());
         }
     }
 
     /**
+     * 多轮对话端点 — 在已有诊断基础上追问。
+     *
+     * <pre>
+     * POST /api/chat
+     * {
+     *   "conversationId": "uuid-xxx",
+     *   "message": "这个异常最近一次出现是什么时候？"
+     * }
+     * </pre>
+     */
+    @PostMapping("/chat")
+    public Map<String, Object> chat(@RequestBody Map<String, String> body) {
+        String conversationId = body.get("conversationId");
+        String userMessage = body.get("message");
+
+        if (conversationId == null || conversationId.isBlank()) {
+            return Map.of("success", false, "error", "缺少 conversationId（请先调用 /api/diagnosis 获取）");
+        }
+        if (userMessage == null || userMessage.isBlank()) {
+            return Map.of("success", false, "error", "缺少 message 字段");
+        }
+
+        try {
+            // 1. 加载历史消息
+            List<ChatMessage> messages = new ArrayList<>();
+            loadConversationHistory(conversationId, messages);
+            messages.add(ChatMessage.user(userMessage));
+
+            // 2. 调用 LLM（带工具）
+            ChatRequest request = new ChatRequest(
+                    messages,
+                    toolRegistry.listDefinitions(),
+                    modelName,
+                    0.3,
+                    1024,
+                    null
+            );
+
+            ChatResponse response = modelClient.chat(request);
+
+            // 3. 保存对话
+            saveConversation(conversationId, messages,
+                    ChatMessage.assistant(response.content()));
+
+            return Map.of(
+                    "success", true,
+                    "reply", response.content(),
+                    "conversationId", conversationId
+            );
+        } catch (Exception e) {
+            return Map.of("success", false, "error", e.getMessage());
+        }
+    }
+
+    // ---- 对话历史管理 ----
+
+    /**
+     * 从 MemoryStore 加载历史对话消息。
+     */
+    private void loadConversationHistory(String conversationId, List<ChatMessage> target) {
+        List<MemoryEntry> history = memoryStore.findByType("conversation:" + conversationId, 20);
+        // 按时间正序（最早的在前面）
+        for (int i = history.size() - 1; i >= 0; i--) {
+            MemoryEntry entry = history.get(i);
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> msg = objectMapper.readValue(entry.content(), Map.class);
+                target.add(new ChatMessage(
+                        (String) msg.get("role"),
+                        (String) msg.get("content"),
+                        (String) msg.get("toolCallId"),
+                        List.of()));
+            } catch (JsonProcessingException ignored) {
+            }
+        }
+    }
+
+    /**
+     * 保存对话消息到 MemoryStore，返回 conversationId。
+     */
+    private String saveConversation(String conversationId,
+                                     List<ChatMessage> requestMessages,
+                                     ChatMessage responseMessage) {
+        String cid = conversationId != null ? conversationId : UUID.randomUUID().toString();
+
+        try {
+            // 只保存最后一条 user 消息和 assistant 回复
+            ChatMessage lastUser = null;
+            for (int i = requestMessages.size() - 1; i >= 0; i--) {
+                if ("user".equals(requestMessages.get(i).role())) {
+                    lastUser = requestMessages.get(i);
+                    break;
+                }
+            }
+
+            if (lastUser != null) {
+                String userJson = objectMapper.writeValueAsString(Map.of(
+                        "role", "user", "content", lastUser.content()));
+                memoryStore.save(MemoryEntry.pending("conversation:" + cid, userJson));
+            }
+
+            String assistantJson = objectMapper.writeValueAsString(Map.of(
+                    "role", "assistant", "content", responseMessage.content()));
+            memoryStore.save(MemoryEntry.pending("conversation:" + cid, assistantJson));
+        } catch (JsonProcessingException ignored) {
+        }
+
+        return cid;
+    }
+
+    /**
      * 将 LLM 返回的 JSON 字符串解析为 DiagnosisReport。
-     * 解析失败时返回降级报告（保留原始文本）。
      */
     private DiagnosisReport parseDiagnosisReport(String jsonContent, String exceptionType) {
         try {
-            // 提取 JSON 部分（LLM 有时会在 JSON 外包裹 markdown 代码块）
             String json = jsonContent.trim();
             if (json.startsWith("```")) {
                 int start = json.indexOf("\n");
@@ -130,7 +255,6 @@ public class DiagnosisController {
             }
             return objectMapper.readValue(json, DiagnosisReport.class);
         } catch (Exception e) {
-            // 降级：将原始内容填入 summary 和 likelyRootCause
             return new DiagnosisReport(
                     "JSON 解析失败，以下是原始诊断内容",
                     exceptionType,
@@ -150,8 +274,9 @@ public class DiagnosisController {
     public Map<String, Object> health() {
         return Map.of(
                 "status", "UP",
-                "version", "0.3.0-SNAPSHOT",
-                "prompts", promptRegistry.listNames().size() + " loaded"
+                "version", "0.4.0-SNAPSHOT",
+                "prompts", promptRegistry.listNames().size() + " loaded",
+                "tools", toolRegistry.listDefinitions().size() + " registered"
         );
     }
 }

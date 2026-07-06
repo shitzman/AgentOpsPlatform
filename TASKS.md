@@ -35,6 +35,13 @@
 - [x] 添加单元测试：PromptTemplate / ToolRegistry / WorkflowEngine / MemoryStore（4 类 20 个用例）
 - [x] 集成 Swagger / OpenAPI 文档（springdoc-openapi）
 
+## V0.4 Tool Integration
+
+- [x] Git Tool：git-log / git-blame / git-show（通过 ProcessBuilder 调本地 git）
+- [x] Log Tool：log-search（模拟实现，可对接 ELK / Loki / SLS）
+- [x] 多轮对话：conversationId + 历史加载/保存 + POST /api/chat 追问端点
+- [x] AgentOpsConfig 启动时自动注册 4 个工具到 ToolRegistry
+
 ## Backlog
 
 - [ ] 实现 MySQL 版 MemoryStore（替换内存实现）

@@ -8,8 +8,7 @@ import com.agentops.prompts.PromptRegistry;
 import com.agentops.prompts.PromptTemplate;
 import com.agentops.runtime.model.ModelClient;
 import com.agentops.runtime.OpenAIModelClient;
-import com.agentops.tools.InMemoryToolRegistry;
-import com.agentops.tools.ToolRegistry;
+import com.agentops.tools.*;
 import com.agentops.workflow.SequentialWorkflowEngine;
 import com.agentops.workflow.WorkflowEngine;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,23 +21,32 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * AgentOps Platform Spring 配置 — 装配所有核心 Bean。
- *
- * <p>按依赖顺序装配：
- * <ol>
- *   <li>基础设施：ToolRegistry / PromptRegistry / MemoryStore / WorkflowEngine</li>
- *   <li>模型调用：ModelClient</li>
- *   <li>领域 Agent：BusinessExceptionAgent</li>
- * </ol>
+ * AgentOps Platform Spring 配置 — 装配所有核心 Bean 并注册工具。
  */
 @Configuration
 public class AgentOpsConfig {
+
+    /** Git 仓库路径（默认使用当前项目路径） */
+    @Value("${agentops.git.repo-path:${user.dir}}")
+    private String gitRepoPath;
 
     // ---- 基础设施 Bean ----
 
     @Bean
     ToolRegistry toolRegistry() {
-        return new InMemoryToolRegistry();
+        InMemoryToolRegistry registry = new InMemoryToolRegistry();
+
+        // 注册 Git 工具（log / blame / show）
+        GitTool git = new GitTool(gitRepoPath);
+        registry.register(GitTool.logDefinition(), git.logExecutor());
+        registry.register(GitTool.blameDefinition(), git.blameExecutor());
+        registry.register(GitTool.showDefinition(), git.showExecutor());
+
+        // 注册日志搜索工具（V0.4 模拟实现）
+        LogTool logTool = new LogTool();
+        registry.register(LogTool.definition(), logTool.executor());
+
+        return registry;
     }
 
     @Bean
@@ -51,23 +59,15 @@ public class AgentOpsConfig {
         return new SequentialWorkflowEngine();
     }
 
-    /**
-     * PromptRegistry，启动时自动从 classpath:prompts/ 加载所有 .txt 文件。
-     */
     @Bean
     PromptRegistry promptRegistry(ResourcePatternResolver resolver) throws IOException {
         InMemoryPromptRegistry registry = new InMemoryPromptRegistry();
-
-        // 扫描所有模块的 prompts/ 目录
         Resource[] resources = resolver.getResources("classpath*:prompts/*.txt");
         for (Resource resource : resources) {
             String filename = resource.getFilename();
             if (filename == null) continue;
-
-            // 文件名去除 .txt 后缀作为模板名称
             String name = filename.replace(".txt", "");
             String content = resource.getContentAsString(StandardCharsets.UTF_8);
-
             registry.register(new PromptTemplate(name, content));
         }
         return registry;
