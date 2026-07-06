@@ -11,6 +11,7 @@ import com.agentops.runtime.model.ChatResponse;
 import com.agentops.workflow.SimpleWorkflowContext;
 import com.agentops.workflow.WorkflowContext;
 import com.agentops.workflow.WorkflowEngine;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,15 +34,18 @@ public class DiagnosisController {
     private final WorkflowEngine workflowEngine;
     private final ModelClient modelClient;
     private final PromptRegistry promptRegistry;
+    private final String modelName;
 
     public DiagnosisController(BusinessExceptionAgent agent,
                                WorkflowEngine workflowEngine,
                                ModelClient modelClient,
-                               PromptRegistry promptRegistry) {
+                               PromptRegistry promptRegistry,
+                               @Value("${agentops.llm.model:deepseek-chat}") String modelName) {
         this.agent = agent;
         this.workflowEngine = workflowEngine;
         this.modelClient = modelClient;
         this.promptRegistry = promptRegistry;
+        this.modelName = modelName;
     }
 
     /**
@@ -87,7 +91,7 @@ public class DiagnosisController {
                             ChatMessage.user("请对以上异常进行诊断分析。")
                     ),
                     List.of(), // V0.2 暂不传工具
-                    null,      // 使用默认模型
+                    modelName,
                     0.2,
                     2048
             );

@@ -1,6 +1,6 @@
 # AgentOps Platform — 应用配置
 server:
-  port: 8080
+  port: 8088
 
 spring:
   application:
