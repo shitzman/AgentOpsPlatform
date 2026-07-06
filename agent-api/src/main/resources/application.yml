@@ -1,0 +1,17 @@
+# AgentOps Platform — 应用配置
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agentops-platform
+
+# AgentOps LLM 配置（支持 OpenAI / DeepSeek / 通义千问等兼容 API）
+agentops:
+  llm:
+    # API 地址（默认使用 DeepSeek，国内可直接访问）
+    base-url: ${AGENTOPS_LLM_BASE_URL:https://api.deepseek.com/v1}
+    # API 密钥（必须通过环境变量设置）
+    api-key: ${AGENTOPS_LLM_API_KEY:}
+    # 默认模型
+    model: ${AGENTOPS_LLM_MODEL:deepseek-chat}
