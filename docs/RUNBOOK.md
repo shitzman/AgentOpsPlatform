@@ -112,6 +112,13 @@ mysql -h 127.0.0.1 -P 3306 -u agentops -pagentops123 agentops
 
 ## 应用启动
 
+### ⚠️ 首次启动必做
+
+```bash
+# 必须先将所有模块安装到本地 Maven 仓库，否则 agent-api 找不到 sibling 依赖
+mvn install -DskipTests
+```
+
 ### LLM 配置
 
 应用支持以下环境变量，按优先级从高到低：
@@ -305,12 +312,26 @@ mvn -version  # 确认 Java version: 21
 $env:AGENTOPS_LLM_API_KEY = "sk-xxxxxxxx"
 ```
 
-### 启动报错：端口 8080 被占用
+### 启动报错：端口被占用
+
+默认端口为 8088（8080 常被系统进程占用）。如需更改：
 
 ```yaml
-# 在 application.yml 中修改端口
+# 在 agent-api/src/main/resources/application.yml 中修改
 server:
   port: 8081
+```
+
+或通过命令行参数：
+```bash
+mvn spring-boot:run -pl agent-api -Dspring-boot.run.arguments="--server.port=8081"
+```
+
+### 启动报错：找不到模块依赖
+
+```bash
+# 需要先 install 到本地仓库
+mvn install -DskipTests
 ```
 
 ### MySQL 容器启动失败
