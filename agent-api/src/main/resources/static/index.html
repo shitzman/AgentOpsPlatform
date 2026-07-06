@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentOps Platform — API 测试控制台</title>
+<style>
+:root {
+  --bg: #f5f7fa; --card: #fff; --text: #333; --sub: #666; --border: #e0e4e8;
+  --primary: #4f46e5; --primary-hover: #4338ca; --danger: #ef4444; --success: #22c55e;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08);
+  --critical: #dc2626; --high: #ea580c; --medium: #ca8a04; --low: #16a34a;
+  --bubble-user: #eef2ff; --bubble-agent: #f0fdf4;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+header { background:var(--card); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+header h1 { font-size:18px; font-weight:600; display:flex; align-items:center; gap:8px; }
+header h1 span { font-size:12px; font-weight:400; color:var(--sub); background:#f1f5f9; padding:2px 8px; border-radius:12px; }
+.status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.status-dot.online { background:var(--success); }
+.status-dot.offline { background:var(--danger); }
+main { max-width:1300px; margin:0 auto; padding:24px; display:grid; grid-template-columns:460px 1fr; gap:24px; }
+@media (max-width:900px) { main { grid-template-columns:1fr; } }
+.card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; margin-bottom:16px; }
+.card h3 { font-size:14px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; gap:6px; }
+label { display:block; font-size:13px; font-weight:500; color:var(--sub); margin-bottom:4px; }
+textarea, input[type=text] { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font:13px/1.5 monospace; resize:vertical; background:#fafbfc; transition:border-color .2s; }
+textarea:focus, input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,.1); }
+textarea { min-height:200px; }
+.btn { display:inline-flex; align-items:center; gap:6px; padding:10px 20px; border:none; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:all .15s; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-hover); }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+.btn-sm { padding:6px 14px; font-size:12px; }
+.presets { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.preset-btn { padding:6px 12px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:#fff; cursor:pointer; transition:all .15s; }
+.preset-btn:hover { border-color:var(--primary); color:var(--primary); }
+.severity-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; color:#fff; }
+.severity-critical { background:var(--critical); }
+.severity-high { background:var(--high); }
+.severity-medium { background:var(--medium); }
+.severity-low { background:var(--low); }
+.confidence-bar { height:6px; border-radius:3px; background:#e5e7eb; margin-top:8px; overflow:hidden; }
+.confidence-fill { height:100%; border-radius:3px; background:var(--primary); transition:width .4s; }
+.field { margin-bottom:12px; }
+.field-value { padding:8px 12px; background:#f8fafc; border-radius:6px; font-size:13px; }
+.reco-list { list-style:none; padding:0; }
+.reco-list li { padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
+.reco-list li:last-child { border-bottom:none; }
+.reco-list li::before { content:'▸ '; color:var(--primary); font-weight:bold; }
+/* 对话气泡 */
+.chat-area { margin-top:12px; }
+.chat-msg { padding:10px 14px; border-radius:12px; margin-bottom:8px; font-size:13px; max-width:90%; }
+.chat-msg.user { background:var(--bubble-user); margin-left:auto; border-bottom-right-radius:4px; }
+.chat-msg.agent { background:var(--bubble-agent); margin-right:auto; border-bottom-left-radius:4px; }
+.chat-msg .role { font-size:11px; font-weight:600; color:var(--sub); margin-bottom:2px; }
+.cid-display { font-size:11px; color:var(--sub); margin-top:8px; word-break:break-all; background:#f1f5f9; padding:6px 10px; border-radius:6px; }
+.error-msg { background:#fef2f2; color:var(--danger); padding:12px; border-radius:8px; font-size:13px; border:1px solid #fecaca; }
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin .6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#healthInfo { display:flex; gap:16px; font-size:12px; color:var(--sub); }
+#healthInfo span { display:flex; align-items:center; gap:4px; }
+.empty-state { text-align:center; padding:40px 20px; color:var(--sub); }
+.empty-state svg { width:48px; height:48px; margin-bottom:12px; opacity:.3; }
+.modules-tags { display:flex; flex-wrap:wrap; gap:6px; }
+.module-tag { padding:3px 10px; background:#eef2ff; color:var(--primary); border-radius:12px; font-size:12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛠 AgentOps Platform <span>API 测试控制台</span></h1>
+  <div id="healthInfo">
+    <span><span class="status-dot" id="statusDot"></span><span id="statusText">检测中...</span></span>
+    <span id="versionInfo"></span>
+    <span id="toolInfo"></span>
+  </div>
+</header>
+
+<main>
+  <!-- ===== 左侧：输入区 ===== -->
+  <div>
+    <div class="card">
+      <h3>📋 诊断输入</h3>
+      <label>预设示例</label>
+      <div class="presets">
+        <button class="preset-btn" onclick="loadPreset('npe')">NullPointerException</button>
+        <button class="preset-btn" onclick="loadPreset('illegal')">IllegalArgumentException</button>
+        <button class="preset-btn" onclick="loadPreset('sql')">SQL 异常</button>
+      </div>
+      <label for="stackInput">异常堆栈文本</label>
+      <textarea id="stackInput" placeholder="在此粘贴 Java 异常堆栈..."></textarea>
+      <div style="margin-top:12px;">
+        <button class="btn btn-primary" id="diagnoseBtn" onclick="submitDiagnosis()">
+          提交诊断
+        </button>
+      </div>
+      <div id="cidDisplay" class="cid-display" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h3>💬 追问</h3>
+      <input type="text" id="chatInput" placeholder="输入追问内容（需要先完成诊断）..." disabled>
+      <div style="margin-top:8px;">
+        <button class="btn btn-primary btn-sm" id="chatBtn" onclick="sendChat()" disabled>发送追问</button>
+      </div>
+      <div id="chatArea" class="chat-area"></div>
+    </div>
+  </div>
+
+  <!-- ===== 右侧：结果区 ===== -->
+  <div>
+    <div id="resultArea" class="card">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 12h6m-3-3v6m-7 4h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        <p>提交诊断后结果将显示在这里</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ===== 状态 =====
+let conversationId = null;
+const API = '';
+
+// ===== 预设示例 =====
+const presets = {
+  npe: `java.lang.NullPointerException: Cannot invoke "String.length()" because "name" is null
+\tat com.agentops.service.OrderService.getOrder(OrderService.java:42)
+\tat com.agentops.controller.OrderController.list(OrderController.java:28)
+\tat org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1084)
+\tat org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:898)`,
+
+  illegal: `java.lang.IllegalArgumentException: Invalid order status: CANCELLED
+\tat com.agentops.service.OrderService.updateStatus(OrderService.java:88)
+\tat com.agentops.controller.OrderController.update(OrderController.java:55)
+\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+\tat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205)`,
+
+  sql: `org.springframework.dao.DataIntegrityViolationException: could not execute statement
+\tat com.agentops.repository.OrderRepository.save(OrderRepository.java:65)
+\tat com.agentops.service.OrderService.createOrder(OrderService.java:120)
+\tat com.agentops.controller.OrderController.create(OrderController.java:40)
+Caused by: java.sql.SQLIntegrityConstraintViolationException: Duplicate entry 'ORD-001' for key 'order.uk_code'
+\tat com.mysql.cj.jdbc.ClientPreparedStatement.executeInternal(ClientPreparedStatement.java:953)`
+};
+
+function loadPreset(type) {
+  document.getElementById('stackInput').value = presets[type];
+}
+
+// ===== 健康检查 =====
+async function checkHealth() {
+  try {
+    const r = await fetch(API + '/api/health');
+    const d = await r.json();
+    document.getElementById('statusDot').className = 'status-dot online';
+    document.getElementById('statusText').textContent = '在线';
+    document.getElementById('versionInfo').textContent = 'v' + d.version;
+    document.getElementById('toolInfo').textContent = d.tools || '';
+  } catch {
+    document.getElementById('statusDot').className = 'status-dot offline';
+    document.getElementById('statusText').textContent = '离线';
+  }
+}
+
+// ===== 提交诊断 =====
+async function submitDiagnosis() {
+  const stackTrace = document.getElementById('stackInput').value.trim();
+  if (!stackTrace) return alert('请输入异常堆栈文本');
+
+  const btn = document.getElementById('diagnoseBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 诊断中...';
+
+  try {
+    const r = await fetch(API + '/api/diagnosis', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stackTrace, conversationId: conversationId || '' })
+    });
+    const d = await r.json();
+
+    if (d.success) {
+      conversationId = d.conversationId;
+      document.getElementById('cidDisplay').style.display = 'block';
+      document.getElementById('cidDisplay').innerHTML = '🆔 conversationId: <code>' + conversationId + '</code>';
+      document.getElementById('chatInput').disabled = false;
+      document.getElementById('chatBtn').disabled = false;
+      renderReport(d.report);
+    } else {
+      showError(d.error);
+    }
+  } catch (e) {
+    showError('请求失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '提交诊断';
+  }
+}
+
+// ===== 渲染报告 =====
+function renderReport(report) {
+  const sevMap = {
+    critical: 'severity-critical', high: 'severity-high',
+    medium: 'severity-medium', low: 'severity-low'
+  };
+
+  const html = `
+    <h3>📊 诊断报告</h3>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span class="severity-badge ${sevMap[report.severity] || 'severity-medium'}">${report.severity || 'medium'}</span>
+      <span style="font-size:13px;color:var(--sub);">${report.exceptionType}</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--sub);">置信度</span>
+      <span style="font-size:14px;font-weight:600;">${Math.round((report.confidence || 0) * 100)}%</span>
+    </div>
+    <div class="confidence-bar"><div class="confidence-fill" style="width:${(report.confidence || 0) * 100}%"></div></div>
+
+    <div class="field" style="margin-top:14px;"><label>异常摘要</label><div class="field-value">${esc(report.summary)}</div></div>
+    <div class="field"><label>根因分析</label><div class="field-value">${esc(report.likelyRootCause)}</div></div>
+    <div class="field"><label>影响范围</label><div class="field-value">${esc(report.impactScope)}</div></div>
+    <div class="field"><label>紧急程度</label><div class="field-value"><strong>${esc(report.urgency)}</strong></div></div>
+
+    <div class="field"><label>关联模块</label>
+      <div class="modules-tags">${(report.relatedModules || []).map(m => '<span class="module-tag">' + esc(m) + '</span>').join('')}</div>
+    </div>
+
+    <div class="field"><label>修复建议</label>
+      <ol class="reco-list">${(report.recommendations || []).map(r => '<li>' + esc(r) + '</li>').join('')}</ol>
+    </div>
+  `;
+
+  document.getElementById('resultArea').innerHTML = html;
+}
+
+// ===== 追问 =====
+async function sendChat() {
+  const msg = document.getElementById('chatInput').value.trim();
+  if (!msg) return;
+  if (!conversationId) return alert('请先提交诊断获取 conversationId');
+
+  const area = document.getElementById('chatArea');
+  area.innerHTML += '<div class="chat-msg user"><div class="role">🧑 You</div>' + esc(msg) + '</div>';
+
+  const btn = document.getElementById('chatBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const r = await fetch(API + '/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, message: msg })
+    });
+    const d = await r.json();
+    if (d.success) {
+      area.innerHTML += '<div class="chat-msg agent"><div class="role">🤖 Agent</div>' + esc(d.reply) + '</div>';
+    } else {
+      area.innerHTML += '<div class="chat-msg agent"><div class="role">⚠️ Error</div>' + esc(d.error) + '</div>';
+    }
+  } catch (e) {
+    area.innerHTML += '<div class="chat-msg agent"><div class="role">⚠️ Error</div>' + esc(e.message) + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发送追问';
+  }
+  document.getElementById('chatInput').value = '';
+  area.scrollTop = area.scrollHeight;
+}
+
+function showError(msg) {
+  document.getElementById('resultArea').innerHTML = '<div class="error-msg">❌ ' + esc(msg) + '</div>';
+}
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ===== 初始化 =====
+checkHealth();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>
