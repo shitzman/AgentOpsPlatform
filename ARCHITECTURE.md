@@ -27,7 +27,7 @@ Examples:
 - Log Tool
 - Git Tool
 - Code Tool
-- Database Tool
+- Database Tool (MySQL)
 - Redis Tool
 - Linux Tool
 - Kubernetes Tool

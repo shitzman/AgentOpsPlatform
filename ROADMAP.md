@@ -47,7 +47,6 @@ Goal: support cross-service root cause analysis.
 
 - OpenTelemetry integration.
 - Prometheus query tool.
-- Kafka context tool.
 - Trace and metric correlation.
 
 ## V0.5 Assisted Fixing

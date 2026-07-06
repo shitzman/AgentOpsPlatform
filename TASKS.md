@@ -11,7 +11,7 @@
 - [x] Define lightweight Workflow interfaces.
 - [x] Define Memory interfaces.
 - [x] Add OpenAI Java SDK integration boundary.
-- [x] Add Docker Compose baseline for PostgreSQL, Redis, Kafka, OpenTelemetry, Prometheus, and Grafana.
+- [x] Add Docker Compose baseline for MySQL, Redis, OpenTelemetry, Prometheus, and Grafana.
 - [x] Add first Business Exception Agent log diagnosis workflow.
 
 ## Backlog
@@ -23,7 +23,6 @@
 - [ ] Add repository search.
 - [ ] Add blame and commit analysis.
 - [ ] Add Prometheus Tool.
-- [ ] Add Kafka context tool.
 - [ ] Plan GitHub and GitLab plugin boundaries.
 
 

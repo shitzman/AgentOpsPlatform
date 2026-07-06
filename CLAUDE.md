@@ -37,7 +37,7 @@ V0.1 focuses on platform foundations:
 - Prompt Registry.
 - Lightweight Workflow Engine.
 - Memory interfaces.
-- Docker Compose for PostgreSQL, Redis, Kafka, Prometheus, Grafana, and OpenTelemetry.
+- Docker Compose for MySQL, Redis, Prometheus, Grafana, and OpenTelemetry.
 
 Do not implement automatic patch generation, automatic pull requests, a knowledge base, or a chat bot in V0.1.
 

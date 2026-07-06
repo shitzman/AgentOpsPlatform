@@ -19,6 +19,8 @@ All notable changes to AgentOps Platform will be documented in this file.
 - Added lightweight Workflow interfaces: `WorkflowContext`, `WorkflowStep`, `WorkflowStepException`, `WorkflowDefinition`, and `WorkflowEngine`.
 - Added Memory interfaces: `MemoryEntry` and `MemoryStore` with CRUD and search operations.
 - Added OpenAI Java SDK integration boundary: `ChatMessage`, `ToolCall`, `ChatRequest`, `ChatResponse`, `ModelClient`, and `ModelClientException` in `agent-runtime`.
-- Added Docker Compose baseline with PostgreSQL 16, Redis 7, Kafka (KRaft), Prometheus, Grafana, and OpenTelemetry Collector.
+- Added Docker Compose baseline with MySQL 8.0, Redis 7, Prometheus, Grafana, and OpenTelemetry Collector.
+- Removed Kafka from infrastructure (defer to later milestone if needed).
+- Switched from PostgreSQL to MySQL for better enterprise compatibility.
 - Added Business Exception Agent with `StackTrace`, `StackTraceFrame`, `DiagnosisReport` models, 3-step diagnosis workflow, and diagnosis system prompt template.
 
