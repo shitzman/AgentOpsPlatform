@@ -74,7 +74,10 @@ public class BusinessExceptionAgent {
         // 注：当前 execute(name, context) 需要 initialContext，
         // 由 WorkflowEngine 实现负责创建并注入 rawStackTrace
         // V0.2 完善此流程
-        return DiagnosisReport.placeholder("unknown", "诊断工作流骨架已执行（V0.2 接入 LLM）");
+        return new DiagnosisReport(
+                "诊断工作流骨架已执行（V0.2 接入 LLM）",
+                "unknown", "medium", "待 LLM 分析",
+                "未知", "计划修复", List.of(), List.of(), 0.0);
     }
 
     /**
@@ -207,7 +210,10 @@ public class BusinessExceptionAgent {
                     trace.message() != null ? trace.message() : "无消息",
                     projectFrames.size());
 
-            DiagnosisReport report = DiagnosisReport.placeholder(trace.exceptionType(), summary);
+            DiagnosisReport report = new DiagnosisReport(
+                    summary, trace.exceptionType(), "medium",
+                    "待 LLM 分析", "未知", "计划修复",
+                    List.of(), List.of(), 0.0);
             context.put(CTX_DIAGNOSIS_REPORT, report);
             return context;
         };

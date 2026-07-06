@@ -12,18 +12,20 @@ import java.util.List;
  * 这是 provider-agnostic 的请求模型，{@link ModelClient} 的实现
  * 负责将其转换为具体 LLM 厂商的 API 格式。
  *
- * @param messages    对话历史（按时间顺序）
- * @param tools       当前可用的工具定义列表（来自 ToolRegistry）
- * @param model       模型名称（如 "gpt-4o"）
- * @param temperature 生成温度 (0.0–2.0)，诊断场景建议 0.0–0.3
- * @param maxTokens   最大输出 Token 数
+ * @param messages       对话历史（按时间顺序）
+ * @param tools          当前可用的工具定义列表（来自 ToolRegistry）
+ * @param model          模型名称（如 "gpt-4o"）
+ * @param temperature    生成温度 (0.0–2.0)，诊断场景建议 0.0–0.3
+ * @param maxTokens      最大输出 Token 数
+ * @param responseFormat 响应格式（"json_object" 启用 JSON Mode，null 为默认文本模式）
  */
 public record ChatRequest(
         List<ChatMessage> messages,
         List<ToolDefinition> tools,
         String model,
         double temperature,
-        int maxTokens) {
+        int maxTokens,
+        String responseFormat) {
 
     public ChatRequest {
         if (messages == null || messages.isEmpty()) {
@@ -44,8 +46,13 @@ public record ChatRequest(
                 : Collections.emptyList();
     }
 
-    /** 创建一个不带工具的简单对话请求 */
+    /** 创建一个不带工具、文本模式的简单对话请求 */
     public static ChatRequest simple(List<ChatMessage> messages, String model) {
-        return new ChatRequest(messages, Collections.emptyList(), model, 0.0, 4096);
+        return new ChatRequest(messages, Collections.emptyList(), model, 0.0, 4096, null);
+    }
+
+    /** 是否启用了 JSON Mode */
+    public boolean isJsonMode() {
+        return "json_object".equals(responseFormat);
     }
 }

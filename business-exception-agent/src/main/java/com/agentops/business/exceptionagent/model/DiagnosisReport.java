@@ -1,25 +1,36 @@
 package com.agentops.business.exceptionagent.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Collections;
 import java.util.List;
 
 /**
  * 诊断报告 — Business Exception Agent 的结构化输出。
  *
- * <p>包含异常摘要、可能的根因分析、关联模块和修复建议。
- * 设计为 LLM 结构化输出的目标 Schema。
+ * <p>此模型同时用于两个目的：
+ * <ol>
+ *   <li>作为 LLM JSON Mode 输出的目标 Schema（通过 Prompt 中的 JSON Schema 描述）</li>
+ *   <li>作为 REST API 响应的序列化对象（Jackson 自动序列化）</li>
+ * </ol>
  *
  * @param summary          异常摘要（一句话描述发生了什么）
- * @param exceptionType    异常类型
+ * @param exceptionType    异常类型全名
+ * @param severity         严重级别：critical / high / medium / low
  * @param likelyRootCause  最可能的根因分析
- * @param relatedModules   可能相关的模块/服务列表
+ * @param impactScope      影响范围（涉及哪些模块、服务或用户）
+ * @param urgency          紧急程度：立即修复 / 计划修复 / 低优先级
+ * @param relatedModules   可能相关的模块列表
  * @param recommendations  修复建议列表（按优先级排列）
  * @param confidence       诊断置信度 (0.0–1.0)
  */
 public record DiagnosisReport(
         String summary,
         String exceptionType,
+        String severity,
         String likelyRootCause,
+        String impactScope,
+        String urgency,
         List<String> relatedModules,
         List<String> recommendations,
         double confidence) {
@@ -40,18 +51,5 @@ public record DiagnosisReport(
         recommendations = recommendations != null
                 ? Collections.unmodifiableList(recommendations)
                 : Collections.emptyList();
-    }
-
-    /**
-     * 创建一个简单的诊断报告（用于占位和测试）。
-     */
-    public static DiagnosisReport placeholder(String exceptionType, String summary) {
-        return new DiagnosisReport(
-                summary,
-                exceptionType,
-                "需要 LLM 分析确定根因（V0.2 实现）",
-                Collections.emptyList(),
-                List.of("检查相关服务日志", "查看最近的代码变更", "确认依赖服务是否正常"),
-                0.0);
     }
 }

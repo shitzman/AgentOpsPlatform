@@ -12,4 +12,12 @@
 
     <artifactId>agent-memory</artifactId>
     <name>AgentOps Memory</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

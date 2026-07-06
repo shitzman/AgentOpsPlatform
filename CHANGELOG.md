@@ -23,7 +23,16 @@ All notable changes to AgentOps Platform will be documented in this file.
 - Removed Kafka from infrastructure (defer to later milestone if needed).
 - Switched from PostgreSQL to MySQL for better enterprise compatibility.
 
-## V0.2
+## V0.3
+
+### Added
+
+- JSON Mode 结构化输出：`ChatRequest` 新增 `responseFormat`，`OpenAIModelClient` 支持 `response_format: json_object`
+- 增强 `DiagnosisReport`：新增 `severity`（严重级别）、`impactScope`（影响范围）、`urgency`（紧急程度）
+- 重写诊断 System Prompt，内嵌 JSON Schema，新增诊断维度
+- `DiagnosisController` 支持解析 LLM JSON 响应为结构化 `DiagnosisReport`（含 markdown 代码块清洗 + 降级）
+- 4 类单元测试共 20 个用例：`PromptTemplateTest` / `InMemoryToolRegistryTest` / `SequentialWorkflowEngineTest` / `InMemoryMemoryStoreTest`
+- 集成 SpringDoc OpenAPI（Swagger UI 访问 `/swagger-ui.html`）
 
 ### Added
 

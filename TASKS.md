@@ -25,6 +25,16 @@
 - [x] 搭建 Spring Boot API 层（AgentOpsApplication + AgentOpsConfig + DiagnosisController）
 - [x] 添加 application.yml 配置（支持环境变量切换 LLM 服务商）
 
+## V0.3 Diagnosis Quality Enhancement
+
+- [x] JSON Mode 结构化输出（response_format: json_object）
+- [x] 增强 DiagnosisReport：新增 severity / impactScope / urgency 维度
+- [x] 优化诊断 System Prompt（嵌入 JSON Schema，新增诊断维度）
+- [x] Controller 解析 LLM JSON 响应为 DiagnosisReport（含降级处理）
+- [x] ChatRequest 新增 responseFormat 字段支持 JSON Mode
+- [x] 添加单元测试：PromptTemplate / ToolRegistry / WorkflowEngine / MemoryStore（4 类 20 个用例）
+- [x] 集成 Swagger / OpenAPI 文档（springdoc-openapi）
+
 ## Backlog
 
 - [ ] 实现 MySQL 版 MemoryStore（替换内存实现）

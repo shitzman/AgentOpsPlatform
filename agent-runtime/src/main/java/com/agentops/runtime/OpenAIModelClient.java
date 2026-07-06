@@ -92,6 +92,11 @@ public class OpenAIModelClient implements ModelClient {
         body.put("temperature", request.temperature());
         body.put("max_tokens", request.maxTokens());
 
+        // JSON Mode：要求 LLM 返回严格 JSON
+        if (request.isJsonMode()) {
+            body.put("response_format", Map.of("type", "json_object"));
+        }
+
         // 转换消息列表
         List<Map<String, Object>> messages = new ArrayList<>();
         for (ChatMessage msg : request.messages()) {
