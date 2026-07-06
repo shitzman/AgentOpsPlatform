@@ -22,5 +22,19 @@ All notable changes to AgentOps Platform will be documented in this file.
 - Added Docker Compose baseline with MySQL 8.0, Redis 7, Prometheus, Grafana, and OpenTelemetry Collector.
 - Removed Kafka from infrastructure (defer to later milestone if needed).
 - Switched from PostgreSQL to MySQL for better enterprise compatibility.
+
+## V0.2
+
+### Added
+
+- 实现 `SimpleWorkflowContext` — 基于 LinkedHashMap 的 Workflow 上下文
+- 实现 `SequentialWorkflowEngine` — 顺序 Workflow 执行引擎，遇错即停
+- 实现 `InMemoryToolRegistry` — 线程安全的工具注册表
+- 实现 `InMemoryPromptRegistry` — 支持 classpath 自动加载 prompt 文件
+- 实现 `InMemoryMemoryStore` — 内存 Memory 存储（支持自动 ID 生成）
+- 实现 `OpenAIModelClient` — 基于 HttpClient + Jackson，兼容 OpenAI/DeepSeek/通义千问等
+- 搭建 Spring Boot API 层：`AgentOpsApplication` + `AgentOpsConfig` + `DiagnosisController`
+- 添加 `application.yml` 配置，支持通过环境变量 `AGENTOPS_LLM_*` 切换 LLM 服务商
+- 默认 LLM 使用 DeepSeek（国内可直接访问）
 - Added Business Exception Agent with `StackTrace`, `StackTraceFrame`, `DiagnosisReport` models, 3-step diagnosis workflow, and diagnosis system prompt template.
 
