@@ -1,0 +1,180 @@
+# AgentOps Platform — Docker Compose 开发环境
+#
+# 启动全部服务:
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# 停止并清理:
+#   docker compose -f docker/docker-compose.yml down -v
+#
+# 单独启动某个服务:
+#   docker compose -f docker/docker-compose.yml up -d postgres
+#
+# 服务端口一览:
+#   PostgreSQL:  5432
+#   Redis:       6379
+#   Kafka:       9092
+#   Prometheus:  9090
+#   Grafana:     3000  (admin/admin)
+#   OTel gRPC:   4317
+#   OTel HTTP:   4318
+
+services:
+  # ==========================================================================
+  # PostgreSQL 16 — 持久化存储
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentops-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentops}
+      POSTGRES_USER: ${POSTGRES_USER:-agentops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentops123}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentops} -d ${POSTGRES_DB:-agentops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Redis 7 — 缓存与会话状态
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agentops-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --save 60 1
+      --loglevel warning
+      ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Apache Kafka (KRaft 模式，无需 Zookeeper)
+  # ==========================================================================
+  kafka:
+    image: apache/kafka:3.7.1
+    container_name: agentops-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      # KRaft 模式配置
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ==========================================================================
+  # Prometheus — 指标收集与查询
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: agentops-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheusdata:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Grafana — 可观测性仪表板
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: agentops-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+  # ==========================================================================
+  # OpenTelemetry Collector — 链路追踪与指标采集
+  # ==========================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    container_name: agentops-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # OTLP gRPC 接收端
+      - "4318:4318"   # OTLP HTTP 接收端
+      - "8888:8888"   # Collector 自身指标（供 Prometheus 抓取）
+      - "8889:8889"   # Prometheus Exporter 端点
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otel-collector-config.yml"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    name: agentops_pgdata
+  redisdata:
+    name: agentops_redisdata
+  kafkadata:
+    name: agentops_kafkadata
+  prometheusdata:
+    name: agentops_prometheusdata
+  grafanadata:
+    name: agentops_grafanadata
