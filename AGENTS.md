@@ -51,6 +51,46 @@ Agents must call tools through the Tool Registry. They must not bypass tools to 
 - Prompt strings scattered across Java classes.
 - Unplanned dependency additions.
 
+## Git Remotes
+
+The repository has two remotes:
+
+| Remote | URL | Purpose |
+|--------|-----|---------|
+| `origin` | `https://gitee.com/shitzman/agent-ops-platform.git` | 主仓库（Gitee） |
+| `github-origin` | `https://github.com/shitzman/AgentOpsPlatform.git` | 镜像仓库（GitHub） |
+
+Default push target is `origin` (Gitee). Push to both when a task is complete:
+
+```bash
+git push origin master
+git push github-origin master
+```
+
+## Commit Convention
+
+Commits must be semantic:
+
+- `feat:` — new feature
+- `fix:` — bug fix
+- `refactor:` — code refactoring
+- `docs:` — documentation update
+- `test:` — test addition or update
+
+Example:
+
+```
+feat: add Tool Registry interface
+
+- Define Tool contract with ToolDefinition and ToolExecutor
+- Add ToolRegistry SPI
+- Add package-info.java for agent-tools module
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+```
+
+Commit after each completed task. Do not batch unrelated changes into one commit.
+
 ## Recommended Prompt Files
 
 - `PROJECT_BOOTSTRAP.md`: first repository bootstrap.
@@ -60,3 +100,14 @@ Agents must call tools through the Tool Registry. They must not bypass tools to 
 - `BUGFIX_PROMPT.md`: defect repair.
 - `REFACTOR_PROMPT.md`: planned refactoring.
 - `RELEASE_PROMPT.md`: release preparation.
+
+## OpenWiki
+
+This repository has documentation located in the /openwiki directory.
+
+Start here:
+- [OpenWiki quickstart](openwiki/quickstart.md)
+
+OpenWiki includes repository overview, architecture notes, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+When working in this repository, read the OpenWiki quickstart first, then follow its links to the relevant architecture, workflow, domain, operation, and testing notes.

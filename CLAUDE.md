@@ -40,3 +40,34 @@ V0.1 focuses on platform foundations:
 - Docker Compose for PostgreSQL, Redis, Kafka, Prometheus, Grafana, and OpenTelemetry.
 
 Do not implement automatic patch generation, automatic pull requests, a knowledge base, or a chat bot in V0.1.
+
+## Environment Setup
+
+This project requires **JDK 21**. The machine has JDK 21 installed at `C:\Program Files\Java\jdk-21`, but the global `JAVA_HOME` points to JDK 17.
+
+Before running any Maven commands, switch to JDK 21 in the current PowerShell session:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+```
+
+This is a temporary, per-session switch. It does not affect other projects or system-wide settings.
+
+Verify the switch worked:
+
+```powershell
+mvn -version
+# Should show: Java version: 21.0.6, vendor: Oracle Corporation
+```
+
+## OpenWiki
+
+This repository has documentation located in the /openwiki directory.
+
+Start here:
+- [OpenWiki quickstart](openwiki/quickstart.md)
+
+OpenWiki includes repository overview, architecture notes, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+When working in this repository, read the OpenWiki quickstart first, then follow its links to the relevant architecture, workflow, domain, operation, and testing notes.

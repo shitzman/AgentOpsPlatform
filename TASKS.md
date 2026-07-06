@@ -1,18 +1,18 @@
-# Tasks
+﻿# Tasks
 
 ## Current Milestone: V0.1 Platform Foundation
 
 - [x] Create AI development prompt assets.
-- [ ] Create Maven multi-module project skeleton.
-- [ ] Add Java 21 and Spring Boot 3.x parent configuration.
-- [ ] Add module placeholders for runtime, API, tools, memory, workflow, prompts, MCP, and Business Exception Agent.
-- [ ] Define Tool Registry interfaces.
-- [ ] Define Prompt Registry interfaces.
-- [ ] Define lightweight Workflow interfaces.
-- [ ] Define Memory interfaces.
-- [ ] Add OpenAI Java SDK integration boundary.
-- [ ] Add Docker Compose baseline for PostgreSQL, Redis, Kafka, OpenTelemetry, Prometheus, and Grafana.
-- [ ] Add first Business Exception Agent log diagnosis workflow.
+- [x] Create Maven multi-module project skeleton.
+- [x] Add Java 21 and Spring Boot 3.x parent configuration.
+- [x] Add module placeholders for runtime, API, tools, memory, workflow, prompts, MCP, and Business Exception Agent.
+- [x] Define Tool Registry interfaces.
+- [x] Define Prompt Registry interfaces.
+- [x] Define lightweight Workflow interfaces.
+- [x] Define Memory interfaces.
+- [x] Add OpenAI Java SDK integration boundary.
+- [x] Add Docker Compose baseline for PostgreSQL, Redis, Kafka, OpenTelemetry, Prometheus, and Grafana.
+- [x] Add first Business Exception Agent log diagnosis workflow.
 
 ## Backlog
 
@@ -25,3 +25,6 @@
 - [ ] Add Prometheus Tool.
 - [ ] Add Kafka context tool.
 - [ ] Plan GitHub and GitLab plugin boundaries.
+
+
+
