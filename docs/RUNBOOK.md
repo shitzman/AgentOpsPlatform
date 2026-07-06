@@ -132,8 +132,12 @@ mvn install -DskipTests
 #### DeepSeek（推荐，国内可直接访问）
 
 ```powershell
+# 方式 A：环境变量（每次会话需重设）
 $env:AGENTOPS_LLM_API_KEY = "sk-xxxxxxxx"
-# base-url 和 model 使用默认值即可
+
+# 方式 B：application-local.yml（已加入 .gitignore，不会提交）
+# 复制并填入 Key 后，用 local profile 启动：
+mvn spring-boot:run -pl agent-api -Dspring-boot.run.profiles=local
 ```
 
 #### OpenAI

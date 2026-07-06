@@ -1,4 +1,8 @@
-# AgentOps Platform — 应用配置
+# AgentOps Platform — 应用配置（纳入版本控制）
+#
+# 本地开发敏感配置请放到 application-local.yml（已加入 .gitignore）
+
+# 激活 local profile: mvn spring-boot:run -pl agent-api -Dspring-boot.run.profiles=local
 server:
   port: 8088
 

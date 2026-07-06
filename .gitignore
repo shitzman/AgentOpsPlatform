@@ -33,6 +33,10 @@ target/
 .classpath
 bin/
 
+# 本地开发配置（含敏感信息，如 API Key）
+application-local.yml
+**/application-local.yml
+
 # OS files
 .DS_Store
 Thumbs.db
