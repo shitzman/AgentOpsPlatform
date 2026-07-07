@@ -49,7 +49,7 @@ Goal: 支持跨服务根因分析，打通可观测性数据。
 - [x] 集成 OpenTelemetry（Trace 采集与上报）
 - [ ] 实现 Prometheus Tool（prometheus-query：按 PromQL 查询指标）
 - [ ] Trace 与指标关联分析
-- [ ] 增强 DiagnosisReport：关联 traceId / spanId
+- [x] 增强 DiagnosisReport：关联 traceId / spanId
 - [ ] 诊断工作流支持跨服务调用链分析
 
 ## Backlog
