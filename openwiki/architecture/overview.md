@@ -1,154 +1,168 @@
-# Architecture Overview
+# 架构概览
 
-AgentOps Platform uses a **four-layer architecture** with strict separation of concerns. Each layer has clear ownership boundaries enforced by the `AGENTS.md` rules.
+AgentOps Platform 采用**四层架构**，严格分离关注点。每层拥有清晰的职责边界，由 `AGENTS.md` 规则强制执行。
 
-## Layer Diagram
+## 分层架构图
 
 ```
 ┌──────────────────────────────────────────┐
-│  Enterprise Plugin                       │
-│  GitLab, Jira, Feishu, WeCom, Jenkins,   │
+│  企业插件层 (Enterprise Plugin)           │
+│  GitLab, Jira, 飞书, 企业微信, Jenkins,   │
 │  SkyWalking, Nacos, SonarQube...         │
 ├──────────────────────────────────────────┤
-│  Domain Agent                            │
-│  Business Exception Agent — diagnosis    │
-│  workflow, prompts, reports, RCA policy  │
+│  领域 Agent 层 (Domain Agent)             │
+│  Business Exception Agent — 诊断         │
+│  工作流, Prompt, 报告, 根因分析策略       │
 ├──────────────────────────────────────────┤
-│  Tool Layer                              │
+│  工具层 (Tool Layer)                      │
 │  Log, Git, Code, DB, Redis, K8s,         │
-│  Prometheus, Jira tools...               │
+│  Prometheus, Jira 工具...                │
 ├──────────────────────────────────────────┤
-│  Agent Runtime                           │
-│  Reasoning loop, tool calling, streaming,│
-│  memory, permissions, model provider     │
+│  Agent 运行时 (Agent Runtime)             │
+│  推理循环, 工具调用, 流式输出,            │
+│  记忆管理, 权限检查, 模型提供商抽象       │
 └──────────────────────────────────────────┘
 ```
 
-## Layer Responsibilities
+## 各层职责
 
-### 1. Agent Runtime (`agent-runtime`)
+### 1. Agent 运行时 (`agent-runtime`)
 
-The execution engine. Owns model orchestration and runtime mechanics:
+执行引擎。负责模型编排和运行时机制：
 
-- **Reasoning loop** — the core ReAct-style loop: Reason → Tool Call → Observe → Repeat → Final Answer
-- **Tool calling** — invokes tools through the `ToolRegistry`, marshals arguments and results
-- **Streaming** — supports streaming responses from LLM providers
-- **Memory access** — reads/writes execution context through memory abstractions
-- **Permission checks** — enforces guardrails before tool execution
-- **Model provider boundary** — abstracts the LLM provider (OpenAI Java SDK initially)
+- **推理循环** — 核心 ReAct 风格循环：推理 → 工具调用 → 观察 → 重复 → 最终答案
+- **工具调用** — 通过 `ToolRegistry` 调用工具，编组参数和结果
+- **流式输出** — 支持 LLM 提供商的流式响应
+- **记忆访问** — 通过记忆抽象读写执行上下文
+- **权限检查** — 在工具执行前进行安全控制
+- **模型提供商抽象** — 封装 LLM 提供商（当前为 OpenAI/DeepSeek 兼容 API）
 
-The runtime must **not** contain domain-specific diagnosis logic.
+运行时**禁止**包含领域特定的诊断逻辑。
 
-### 2. Tool Layer (`agent-tools`)
+### 2. 工具层 (`agent-tools`)
 
-All external capabilities are represented as tools. Domain agents do not access external systems directly — they call tools through the Tool Registry.
+所有外部能力以工具形式呈现。领域 Agent 不直接访问外部系统 — 它们通过 Tool Registry 调用工具。
 
-**Implemented interfaces** (in `agent-tools/src/main/java/com/agentops/tools/`):
+**已实现的接口**（`agent-tools/src/main/java/com/agentops/tools/`）：
 
-| Interface | Purpose |
+| 接口 | 用途 |
 |-----------|---------|
-| `ToolDefinition` | Immutable record: `name`, `description`, JSON Schema `parameters` |
+| `ToolDefinition` | 不可变 record：`name`、`description`、JSON Schema `parameters` |
 | `ToolExecutor` | `@FunctionalInterface` — `ToolResult execute(Map<String, Object> arguments)` |
-| `ToolResult` | Record: `success` boolean, `output` string (on success), `error` string (on failure) |
-| `ToolRegistry` | Central SPI: `register()`, `unregister()`, `getDefinition()`, `getExecutor()`, `listDefinitions()` |
+| `ToolResult` | Record：`success` 布尔值、`output` 字符串（成功时）、`error` 字符串（失败时） |
+| `ToolRegistry` | 中心 SPI：`register()`、`unregister()`、`getDefinition()`、`getExecutor()`、`listDefinitions()` |
 
-**Planned tools:**
-- Log Tool — query and analyze application logs
-- Git Tool — repository search, blame, commit analysis
-- Code Tool — source code inspection
-- Database Tool — query production databases (read-only)
-- Prometheus Tool — metrics and alert queries
-- Kafka Tool — message context inspection
-- Kubernetes Tool — pod and container inspection
+**已实现的工具：**
+- Git Tool — `git-log`（文件提交历史）、`git-blame`（逐行修改者）、`git-show`（commit 详情）
+- Log Tool — `log-search`（按关键词/服务/时间范围搜索日志，V0.4 模拟实现）
 
-### 3. Domain Agent (`business-exception-agent`)
+**规划中的工具：**
+- Prometheus Tool — 指标和告警查询
+- Code Tool — 源码检查
+- Database Tool — 生产数据库只读查询
+- Redis Tool — 缓存状态检查
+- Kubernetes Tool — Pod 和容器检查
 
-The Business Exception Agent is the first domain agent. It composes runtime, workflow, prompts, and tools to:
+### 3. 领域 Agent (`business-exception-agent`)
 
-1. Accept a stack trace or exception event
-2. Run a diagnosis workflow
-3. Query logs, Git history, and code via tools
-4. Produce a structured `DiagnosisReport` with root cause, confidence score, related commits, and affected modules
-5. (Future) Generate fix suggestions and draft patches
+Business Exception Agent 是首个领域 Agent。它组合运行时、工作流、Prompt 和工具来实现：
 
-The domain agent owns:
-- Diagnosis workflow definition
-- Domain-specific prompts
-- Diagnosis report schema
-- Root cause analysis policy
+1. 接收异常堆栈或异常事件
+2. 执行诊断工作流
+3. 通过工具查询日志、Git 历史记录和代码
+4. 产出结构化的 `DiagnosisReport`，包含根因、置信度、关联提交和受影响模块
+5. （未来）生成修复建议和补丁草案
 
-It does **not** own low-level integrations — those belong in the Tool Layer.
+领域 Agent 负责：
+- 诊断工作流定义
+- 领域专用 Prompt
+- 诊断报告 Schema
+- 根因分析策略
 
-### 4. Enterprise Plugin
+**不负责**底层集成 — 这些属于工具层。
 
-Extension points for organizational infrastructure. Plugin-shaped so the platform adapts to different enterprises:
+### 4. 企业插件层
 
-- **IM integrations:** Feishu, WeCom, DingTalk
-- **VCS integrations:** GitHub, GitLab
-- **CI/CD:** Jenkins
-- **Observability:** SkyWalking, Prometheus
-- **Configuration:** Nacos
-- **Quality:** SonarQube
+组织基础设施的扩展点。以插件形式设计，使平台适配不同企业：
 
-## Maven Module Map
+- **IM 集成：** 飞书、企业微信、钉钉
+- **版本控制集成：** GitHub、GitLab
+- **CI/CD：** Jenkins
+- **可观测性：** SkyWalking、Prometheus
+- **配置中心：** Nacos
+- **代码质量：** SonarQube
 
-| Module | Artifact | Group: `com.agentops` | Status |
+## Maven 模块映射
+
+| 模块 | Artifact | Group: `com.agentops` | 状态 |
 |--------|----------|-----------------------|--------|
-| Root POM | `agentops-platform` | Parent aggregator | Active |
-| `agent-runtime` | `agent-runtime` | Runtime engine | Placeholder |
-| `agent-api` | `agent-api` | REST API | Placeholder |
-| `agent-tools` | `agent-tools` | Tool contracts | ✅ Implemented |
-| `agent-memory` | `agent-memory` | Memory abstractions | Placeholder |
-| `agent-workflow` | `agent-workflow` | Workflow engine | Placeholder |
-| `agent-prompts` | `agent-prompts` | Prompt registry | ✅ Implemented |
-| `agent-mcp` | `agent-mcp` | MCP integration | Placeholder |
-| `business-exception-agent` | `business-exception-agent` | Domain agent | Placeholder |
+| 根 POM | `agentops-platform` | 父聚合器 | 活跃 |
+| `agent-runtime` | `agent-runtime` | 运行时引擎 | ✅ 已实现 |
+| `agent-api` | `agent-api` | REST API | ✅ 已实现 |
+| `agent-tools` | `agent-tools` | 工具合约 + 实现 | ✅ 已实现 |
+| `agent-memory` | `agent-memory` | 记忆抽象 + 实现 | ✅ 已实现 |
+| `agent-workflow` | `agent-workflow` | 工作流引擎 | ✅ 已实现 |
+| `agent-prompts` | `agent-prompts` | Prompt 注册表 | ✅ 已实现 |
+| `agent-mcp` | `agent-mcp` | MCP 集成 | 占位 |
+| `business-exception-agent` | `business-exception-agent` | 领域 Agent | ✅ 已实现 |
 
-All modules inherit from `org.springframework.boot:spring-boot-starter-parent:3.5.7` with Java 21.
+所有模块继承自 `org.springframework.boot:spring-boot-starter-parent:3.5.7`，使用 Java 21。
 
-## Technology Stack
+## 技术栈
 
-| Technology | Role |
+| 技术 | 角色 |
 |------------|------|
-| **Java 21** | Language (records, pattern matching, virtual threads) |
-| **Spring Boot 3.5.7** | Application framework |
-| **Maven** | Build and dependency management |
-| **OpenAI Java SDK** | LLM provider abstraction (first integration) |
-| **PostgreSQL** | Persistent storage |
-| **Redis** | Caching and session state |
-| **Kafka** | Event streaming and async messaging |
-| **Docker Compose** | Local development infrastructure |
-| **OpenTelemetry** | Distributed tracing |
-| **Prometheus** | Metrics collection |
-| **Grafana** | Metrics visualization |
+| **Java 21** | 语言（records、pattern matching、virtual threads） |
+| **Spring Boot 3.5.7** | 应用框架 |
+| **Maven** | 构建和依赖管理 |
+| **OpenAI 兼容 API** | LLM 提供商抽象（DeepSeek / 通义千问 / OpenAI） |
+| **MySQL 8.0** | 持久化存储 |
+| **Redis 7** | 缓存和会话状态 |
+| **Docker Compose** | 本地开发基础设施 |
+| **OpenTelemetry** | 分布式链路追踪（V0.5） |
+| **Micrometer Tracing** | Span 管理与 OTLP 导出（V0.5） |
+| **Prometheus** | 指标收集 |
+| **Grafana** | 指标可视化 |
+| **SpringDoc OpenAPI** | Swagger 文档 |
 
-## Key Design Decisions
+## 关键设计决策
 
-1. **No heavyweight agent frameworks.** Use OpenAI Java SDK directly. Avoid LangChain4j, Flowable, or similar unless an architecture decision (stored in `DECISIONS/`) justifies the addition.
+1. **不使用重量级 Agent 框架。** 直接使用 OpenAI 兼容 SDK。除非有架构决策记录（存储于 `DECISIONS/`）支撑，否则避免引入 LangChain4j、Flowable 等。
 
-2. **Lightweight workflow engine.** Build a custom, purpose-fit workflow engine rather than adopting a BPMN engine. Workflows are deterministic agent step sequences, not general business process automation.
+2. **轻量级工作流引擎。** 构建自定义的、贴合需求的工作流引擎，而非采用 BPMN 引擎。工作流是确定性的 Agent 步骤序列，不是通用业务流程自动化。
 
-3. **Prompts as resources, not code.** Prompt templates live in `agent-prompts` or classpath resources. Never hard-code prompt strings in Java classes. The `PromptRegistry` supports `{{variable}}` placeholder rendering.
+3. **Prompt 作为资源而非代码。** Prompt 模板存放在 `agent-prompts` 或 classpath 资源中。禁止在 Java 类中硬编码 Prompt 字符串。`PromptRegistry` 支持 `{{变量名}}` 占位符渲染。
 
-4. **Structured outputs for LLM responses.** Diagnosis reports and tool results use typed records, not free-text strings.
+4. **LLM 响应的结构化输出。** 诊断报告和工具结果使用类型化 record，而非自由文本字符串。
 
-5. **Interface-first module boundaries.** Every module exposes a Java interface (or set of interfaces) defining its contract. Implementations live behind those interfaces.
+5. **接口优先的模块边界。** 每个模块暴露定义其合约的 Java 接口（或接口集）。实现隐藏在这些接口之后。
 
-6. **Constructor injection.** No field injection. Dependencies are explicit in constructors.
+6. **构造器注入。** 不使用字段注入。依赖关系在构造器中显式声明。
 
-7. **Tool Registry as the integration gateway.** No domain agent may bypass the Tool Registry. This is the single most important architectural constraint.
+7. **Tool Registry 作为集成网关。** 领域 Agent 禁止绕过 Tool Registry。这是最重要的架构约束。
 
-## Source Map
+## 源码地图
 
-| What | Where |
+| 内容 | 位置 |
 |------|-------|
-| Architecture definition | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) |
+| 架构定义 | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) |
 | Tool Registry SPI | `agent-tools/src/main/java/com/agentops/tools/ToolRegistry.java` |
-| Tool definition record | `agent-tools/src/main/java/com/agentops/tools/ToolDefinition.java` |
-| Tool executor interface | `agent-tools/src/main/java/com/agentops/tools/ToolExecutor.java` |
-| Tool result record | `agent-tools/src/main/java/com/agentops/tools/ToolResult.java` |
+| Tool 定义 record | `agent-tools/src/main/java/com/agentops/tools/ToolDefinition.java` |
+| Tool 执行器接口 | `agent-tools/src/main/java/com/agentops/tools/ToolExecutor.java` |
+| Tool 结果 record | `agent-tools/src/main/java/com/agentops/tools/ToolResult.java` |
+| Git Tool 实现 | `agent-tools/src/main/java/com/agentops/tools/GitTool.java` |
+| Log Tool 实现 | `agent-tools/src/main/java/com/agentops/tools/LogTool.java` |
 | Prompt Registry SPI | `agent-prompts/src/main/java/com/agentops/prompts/PromptRegistry.java` |
-| Prompt template record | `agent-prompts/src/main/java/com/agentops/prompts/PromptTemplate.java` |
-| Parent POM | [`pom.xml`](../../pom.xml) |
-| Module POMs | `agent-*/pom.xml` |
-| Architecture decisions | `DECISIONS/` (currently empty) |
+| Prompt 模板 record | `agent-prompts/src/main/java/com/agentops/prompts/PromptTemplate.java` |
+| 工作流引擎 | `agent-workflow/src/main/java/com/agentops/workflow/SequentialWorkflowEngine.java` |
+| 记忆存储 | `agent-memory/src/main/java/com/agentops/memory/InMemoryMemoryStore.java` |
+| 模型客户端 | `agent-runtime/src/main/java/com/agentops/runtime/OpenAIModelClient.java` |
+| REST API 入口 | `agent-api/src/main/java/com/agentops/api/AgentOpsApplication.java` |
+| 诊断控制器 | `agent-api/src/main/java/com/agentops/api/controller/DiagnosisController.java` |
+| Spring 配置 | `agent-api/src/main/java/com/agentops/api/config/AgentOpsConfig.java` |
+| 应用配置 | `agent-api/src/main/resources/application.yml` |
+| 诊断 System Prompt | `business-exception-agent/src/main/resources/prompts/diagnosis-system.txt` |
+| 根 POM | [`pom.xml`](../../pom.xml) |
+| 模块 POM | `agent-*/pom.xml` |
+| Docker 基础设施 | `docker/docker-compose.yml` |
+| OTel Collector 配置 | `docker/otel/otel-collector-config.yml` |

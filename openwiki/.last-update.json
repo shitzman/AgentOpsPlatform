@@ -1,6 +1,7 @@
 {
-  "updatedAt": "2026-07-06T02:40:52.953Z",
-  "command": "init",
-  "gitHead": "7d0288fd3c3a76bb0e0e5dccc80b1e122c3121a0",
-  "model": "deepseek-v4-pro"
+  "updatedAt": "2026-07-07T00:00:00.000Z",
+  "command": "translate-to-chinese",
+  "gitHead": "a0efd9d",
+  "model": "deepseek-v4-pro",
+  "note": "OpenWiki 文档已翻译为中文并更新至 V0.5 状态"
 }
