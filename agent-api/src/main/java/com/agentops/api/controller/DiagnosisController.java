@@ -153,12 +153,17 @@ public class DiagnosisController {
         }
 
         try {
-            // 1. 加载历史消息
+            // 1. 加载历史并添加追问 System Prompt
             List<ChatMessage> messages = new ArrayList<>();
+            // 注入继续诊断的 System Prompt，让 LLM 知道这是追问场景
+            messages.add(ChatMessage.system(
+                    "你是一名资深 SRE 和 Java 后端专家。用户正在就之前的异常诊断进行追问，" +
+                    "请结合上下文给出专业、具体的回答。如果你需要查看代码仓库或日志，" +
+                    "可以使用已注册的工具（git-log/git-blame/git-show/log-search）。"));
             loadConversationHistory(conversationId, messages);
             messages.add(ChatMessage.user(userMessage));
 
-            // 2. 调用 LLM（带工具）
+            // 3. 调用 LLM（带工具）
             ChatRequest request = new ChatRequest(
                     messages,
                     toolRegistry.listDefinitions(),
@@ -217,7 +222,21 @@ public class DiagnosisController {
                 ? conversationId : UUID.randomUUID().toString();
 
         try {
-            // 只保存最后一条 user 消息和 assistant 回复
+            // 保存 System Prompt（仅首次，消息列表第一条）
+            if (requestMessages.size() > 1
+                    && "system".equals(requestMessages.get(0).role())
+                    && requestMessages.get(0).content() != null) {
+                String type = "conversation:" + cid;
+                // 只在没有历史记录时才保存 system prompt（避免重复）
+                if (memoryStore.findByType(type, 1).isEmpty()) {
+                    Map<String, String> sysMsg = new HashMap<>();
+                    sysMsg.put("role", "system");
+                    sysMsg.put("content", requestMessages.get(0).content());
+                    memoryStore.save(MemoryEntry.pending(type, objectMapper.writeValueAsString(sysMsg)));
+                }
+            }
+
+            // 保存最后一条 user 消息和 assistant 回复
             ChatMessage lastUser = null;
             for (int i = requestMessages.size() - 1; i >= 0; i--) {
                 if ("user".equals(requestMessages.get(i).role())) {
@@ -230,16 +249,16 @@ public class DiagnosisController {
                 Map<String, String> userMsg = new HashMap<>();
                 userMsg.put("role", "user");
                 userMsg.put("content", lastUser.content());
-                String userJson = objectMapper.writeValueAsString(userMsg);
-                memoryStore.save(MemoryEntry.pending("conversation:" + cid, userJson));
+                memoryStore.save(MemoryEntry.pending("conversation:" + cid,
+                        objectMapper.writeValueAsString(userMsg)));
             }
 
             if (responseMessage.content() != null) {
                 Map<String, String> assistantMsg = new HashMap<>();
                 assistantMsg.put("role", "assistant");
                 assistantMsg.put("content", responseMessage.content());
-                String assistantJson = objectMapper.writeValueAsString(assistantMsg);
-                memoryStore.save(MemoryEntry.pending("conversation:" + cid, assistantJson));
+                memoryStore.save(MemoryEntry.pending("conversation:" + cid,
+                        objectMapper.writeValueAsString(assistantMsg)));
             }
         } catch (Exception ignored) {
             // 对话保存失败不影响主流程
