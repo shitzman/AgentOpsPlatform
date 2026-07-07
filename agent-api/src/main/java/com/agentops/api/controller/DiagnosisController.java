@@ -213,7 +213,8 @@ public class DiagnosisController {
     private String saveConversation(String conversationId,
                                      List<ChatMessage> requestMessages,
                                      ChatMessage responseMessage) {
-        String cid = conversationId != null ? conversationId : UUID.randomUUID().toString();
+        String cid = conversationId != null && !conversationId.isBlank()
+                ? conversationId : UUID.randomUUID().toString();
 
         try {
             // 只保存最后一条 user 消息和 assistant 回复
@@ -225,16 +226,23 @@ public class DiagnosisController {
                 }
             }
 
-            if (lastUser != null) {
-                String userJson = objectMapper.writeValueAsString(Map.of(
-                        "role", "user", "content", lastUser.content()));
+            if (lastUser != null && lastUser.content() != null) {
+                Map<String, String> userMsg = new HashMap<>();
+                userMsg.put("role", "user");
+                userMsg.put("content", lastUser.content());
+                String userJson = objectMapper.writeValueAsString(userMsg);
                 memoryStore.save(MemoryEntry.pending("conversation:" + cid, userJson));
             }
 
-            String assistantJson = objectMapper.writeValueAsString(Map.of(
-                    "role", "assistant", "content", responseMessage.content()));
-            memoryStore.save(MemoryEntry.pending("conversation:" + cid, assistantJson));
-        } catch (JsonProcessingException ignored) {
+            if (responseMessage.content() != null) {
+                Map<String, String> assistantMsg = new HashMap<>();
+                assistantMsg.put("role", "assistant");
+                assistantMsg.put("content", responseMessage.content());
+                String assistantJson = objectMapper.writeValueAsString(assistantMsg);
+                memoryStore.save(MemoryEntry.pending("conversation:" + cid, assistantJson));
+            }
+        } catch (Exception ignored) {
+            // 对话保存失败不影响主流程
         }
 
         return cid;
