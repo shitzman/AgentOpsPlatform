@@ -42,15 +42,31 @@
 - [x] 多轮对话：conversationId + 历史加载/保存 + POST /api/chat 追问端点
 - [x] AgentOpsConfig 启动时自动注册 4 个工具到 ToolRegistry
 
-## V0.5 Observability Context
+## V0.5 Observability Context + 项目配置管理
 
-Goal: 支持跨服务根因分析，打通可观测性数据。
+Goal: 打通可观测性数据 + Web 端项目管理。
 
+**可观测性：**
 - [x] 集成 OpenTelemetry（Trace 采集与上报）
+- [x] 增强 DiagnosisReport：关联 traceId / spanId
 - [ ] 实现 Prometheus Tool（prometheus-query：按 PromQL 查询指标）
 - [ ] Trace 与指标关联分析
-- [x] 增强 DiagnosisReport：关联 traceId / spanId
 - [ ] 诊断工作流支持跨服务调用链分析
+
+**项目配置管理（新增）：**
+- [x] Project 模型 + CRUD（MemoryStore 持久化，type="project"）
+- [x] LogSourceConfig 模型 + LogSourceType 枚举（TEXT_INPUT / FILE_PATH / ELASTICSEARCH）
+- [x] LogProvider 接口 + 3 种实现（TextInput / File / Elasticsearch）
+- [x] LogProviderRegistry（可插拔日志源注册表）
+- [x] FilteredToolRegistry（项目级工具过滤装饰器）
+- [x] ProjectManager 核心服务（buildProjectToolRegistry 为项目构建专属工具集）
+- [x] ProjectController REST API（11 个端点：项目/日志源/工具 CRUD）
+- [x] LogTool 重构为可插拔（支持绑定 LogProvider + LogSourceConfig）
+- [x] DiagnosisController 支持可选 projectId（项目级诊断 vs 全局模式）
+- [x] Web 控制台：多文件模块化前端（7 文件，事件驱动架构）
+  - 3 个选项卡：诊断测试 / 项目配置 / 日志源管理
+  - EventBus 组件解耦 + AppState 全局状态
+  - 无框架依赖，纯 fetch() + DOM 操作
 
 ## Backlog
 

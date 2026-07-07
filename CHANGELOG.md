@@ -25,7 +25,7 @@ All notable changes to AgentOps Platform will be documented in this file.
 
 ## V0.5
 
-### Added
+### Added — 可观测性
 
 - OpenTelemetry 集成：添加 `spring-boot-starter-actuator` + `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` 依赖
 - 链路追踪自动导出至 OpenTelemetry Collector（OTLP HTTP `localhost:4318`）
@@ -33,6 +33,33 @@ All notable changes to AgentOps Platform will be documented in this file.
 - `DiagnosisReport` 新增 `traceId` 字段，支持关联分布式追踪数据
 - `DiagnosisController` 为 `/api/diagnosis` 和 `/api/chat` 端点创建 Span（含 LLM 调用子 Span）
 - API 响应中返回 `traceId`，方便在 OTel 后端（Jaeger/Tempo）中检索对应请求
+
+### Added — 项目配置管理系统
+
+**后端（10 个新文件）：**
+- `Project` + `LogSourceConfig` + `LogSourceType` + `LogProvider` 模型层（agent-tools / business-exception-agent）
+- `TextInputLogProvider` / `FileLogProvider` / `ElasticsearchLogProvider` 三种日志源实现
+- `LogProviderRegistry` 接口 + `InMemoryLogProviderRegistry` 实现
+- `FilteredToolRegistry` — 项目级工具过滤装饰器
+- `ProjectManager` — 核心服务：Project/LogSource CRUD + `buildProjectToolRegistry(projectId)` 为项目构建专属工具集
+- `ProjectController` — REST API（11 个端点：项目、日志源、工具 CRUD）
+- `LogTool` 重构为可插拔（支持绑定 LogProvider + LogSourceConfig）
+- `DiagnosisController` 支持可选 `projectId` → 项目级工具集 + 项目上下文注入
+
+**前端（7 个文件，替代旧 index.html）：**
+- `css/app.css` — 全局样式（CSS 变量、卡片、Modal、Tool Tag、Badge 等）
+- `js/app.js` — 应用入口（AppState + EventBus + TabManager）
+- `js/api.js` — HTTP 客户端（所有 fetch 请求单一出口）
+- `js/utils.js` — DOM 工具（notify、showModal、badge、escapeHtml 等）
+- `js/components/diagnosis.js` — 诊断测试选项卡（堆栈输入 + 项目选择 + 报告渲染 + 追问聊天）
+- `js/components/projects.js` — 项目配置选项卡（卡片列表 + 新建/编辑 Modal + 工具勾选框）
+- `js/components/logsources.js` — 日志源管理选项卡（类型感知表单：TEXT_INPUT/FILE_PATH/ELASTICSEARCH）
+
+**架构特性：**
+- 事件驱动（EventBus）解耦 3 个选项卡组件
+- AppState 全局状态管理（无框架依赖）
+- Modal 弹窗复用（项目表单、日志源表单、删除确认）
+- CSS 变量主题管理
 
 ## V0.3
 
