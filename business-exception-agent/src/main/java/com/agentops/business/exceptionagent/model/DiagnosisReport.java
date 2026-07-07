@@ -23,6 +23,7 @@ import java.util.List;
  * @param relatedModules   可能相关的模块列表
  * @param recommendations  修复建议列表（按优先级排列）
  * @param confidence       诊断置信度 (0.0–1.0)
+ * @param traceId          OpenTelemetry Trace ID（V0.5），用于关联分布式追踪数据
  */
 public record DiagnosisReport(
         String summary,
@@ -33,7 +34,8 @@ public record DiagnosisReport(
         String urgency,
         List<String> relatedModules,
         List<String> recommendations,
-        double confidence) {
+        double confidence,
+        String traceId) {
 
     public DiagnosisReport {
         if (summary == null || summary.isBlank()) {
@@ -51,5 +53,6 @@ public record DiagnosisReport(
         recommendations = recommendations != null
                 ? Collections.unmodifiableList(recommendations)
                 : Collections.emptyList();
+        // traceId 为可选字段，允许 null（LLM 不生成此字段）
     }
 }

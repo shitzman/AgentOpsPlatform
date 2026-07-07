@@ -42,17 +42,24 @@
 - [x] 多轮对话：conversationId + 历史加载/保存 + POST /api/chat 追问端点
 - [x] AgentOpsConfig 启动时自动注册 4 个工具到 ToolRegistry
 
+## V0.5 Observability Context
+
+Goal: 支持跨服务根因分析，打通可观测性数据。
+
+- [x] 集成 OpenTelemetry（Trace 采集与上报）
+- [ ] 实现 Prometheus Tool（prometheus-query：按 PromQL 查询指标）
+- [ ] Trace 与指标关联分析
+- [ ] 增强 DiagnosisReport：关联 traceId / spanId
+- [ ] 诊断工作流支持跨服务调用链分析
+
 ## Backlog
 
 - [ ] 实现 MySQL 版 MemoryStore（替换内存实现）
-- [ ] 添加 Log Tool
-- [ ] 添加 Git Tool
-- [ ] 添加 repository search / blame / commit analysis
-- [ ] 添加 Prometheus Tool
-- [ ] 优化 DiagnosisReport 结构化输出（LLM JSON Mode）
-- [ ] 添加单元测试
-- [ ] OpenAPI / Swagger 文档
-- [ ] 规划 GitHub 和 GitLab 插件边界
+- [ ] 实现 Redis 版 MemoryStore（会话缓存 + 短期记忆）
+- [ ] Patch 方案生成工作流（V0.6 Assisted Fixing）
+- [ ] Reviewer 审核步骤（AI 自审 + 人工确认）
+- [ ] GitHub / GitLab 集成规划（V0.6）
+- [ ] 规划 Feishu / WeCom / DingTalk 通知插件
 
 
 

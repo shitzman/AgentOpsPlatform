@@ -23,6 +23,17 @@ All notable changes to AgentOps Platform will be documented in this file.
 - Removed Kafka from infrastructure (defer to later milestone if needed).
 - Switched from PostgreSQL to MySQL for better enterprise compatibility.
 
+## V0.5
+
+### Added
+
+- OpenTelemetry 集成：添加 `spring-boot-starter-actuator` + `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` 依赖
+- 链路追踪自动导出至 OpenTelemetry Collector（OTLP HTTP `localhost:4318`）
+- 应用配置：`management.tracing.sampling.probability=1.0`（开发环境全量采样）
+- `DiagnosisReport` 新增 `traceId` 字段，支持关联分布式追踪数据
+- `DiagnosisController` 为 `/api/diagnosis` 和 `/api/chat` 端点创建 Span（含 LLM 调用子 Span）
+- API 响应中返回 `traceId`，方便在 OTel 后端（Jaeger/Tempo）中检索对应请求
+
 ## V0.3
 
 ### Added

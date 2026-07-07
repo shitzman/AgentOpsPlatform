@@ -16,6 +16,8 @@ import com.agentops.workflow.WorkflowContext;
 import com.agentops.workflow.WorkflowEngine;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,13 +44,15 @@ public class DiagnosisController {
     private final MemoryStore memoryStore;
     private final String modelName;
     private final ObjectMapper objectMapper;
+    private final Tracer tracer;
 
     public DiagnosisController(WorkflowEngine workflowEngine,
                                ModelClient modelClient,
                                PromptRegistry promptRegistry,
                                ToolRegistry toolRegistry,
                                MemoryStore memoryStore,
-                               @Value("${agentops.llm.model:deepseek-chat}") String modelName) {
+                               @Value("${agentops.llm.model:deepseek-chat}") String modelName,
+                               Tracer tracer) {
         this.workflowEngine = workflowEngine;
         this.modelClient = modelClient;
         this.promptRegistry = promptRegistry;
@@ -56,6 +60,7 @@ public class DiagnosisController {
         this.memoryStore = memoryStore;
         this.modelName = modelName;
         this.objectMapper = new ObjectMapper();
+        this.tracer = tracer;
     }
 
     /**
@@ -78,13 +83,18 @@ public class DiagnosisController {
             return Map.of("success", false, "error", "缺少 stackTrace 字段");
         }
 
-        try {
+        // 创建诊断 Span，用于分布式追踪
+        Span span = tracer.nextSpan().name("POST /api/diagnosis").start();
+        try (var scope = tracer.withSpan(span)) {
+            span.tag("conversationId", conversationId != null ? conversationId : "new");
+
             // 1. 执行诊断工作流（解析堆栈 + 过滤项目代码）
             WorkflowContext context = new SimpleWorkflowContext();
             context.put(BusinessExceptionAgent.CTX_RAW_STACK_TRACE, rawStackTrace);
             WorkflowContext result = workflowEngine.execute(
                     BusinessExceptionAgent.WORKFLOW_NAME, context);
             StackTrace parsed = result.get(BusinessExceptionAgent.CTX_PARSED_TRACE, StackTrace.class);
+            span.tag("exceptionType", parsed.exceptionType());
 
             // 2. 渲染诊断 System Prompt
             String systemPrompt = promptRegistry.render("diagnosis-system", Map.of(
@@ -97,7 +107,6 @@ public class DiagnosisController {
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(ChatMessage.system(systemPrompt));
 
-            // 加载历史对话
             if (conversationId != null && !conversationId.isBlank()) {
                 loadConversationHistory(conversationId, messages);
             }
@@ -105,27 +114,41 @@ public class DiagnosisController {
             messages.add(ChatMessage.user("请对以上异常进行诊断分析，只输出 JSON。"));
 
             // 4. 调用 LLM（带工具）
-            ChatRequest request = new ChatRequest(
-                    messages,
-                    toolRegistry.listDefinitions(),
-                    modelName,
-                    0.2,
-                    2048,
-                    "json_object"
-            );
+            Span llmSpan = tracer.nextSpan().name("llm.chat").start();
+            ChatResponse response;
+            try (var llmScope = tracer.withSpan(llmSpan)) {
+                llmSpan.tag("model", modelName);
+                ChatRequest request = new ChatRequest(
+                        messages,
+                        toolRegistry.listDefinitions(),
+                        modelName,
+                        0.2,
+                        2048,
+                        "json_object"
+                );
+                response = modelClient.chat(request);
+                llmSpan.tag("finishReason", response.finishReason() != null ? response.finishReason() : "unknown");
+            } finally {
+                llmSpan.end();
+            }
 
-            ChatResponse response = modelClient.chat(request);
-
-            // 5. 解析 JSON 为 DiagnosisReport
-            DiagnosisReport report = parseDiagnosisReport(response.content(), parsed.exceptionType());
+            // 5. 解析 JSON 为 DiagnosisReport（注入 traceId）
+            String traceId = span.context().traceId();
+            DiagnosisReport report = parseDiagnosisReport(response.content(), parsed.exceptionType(), traceId);
 
             // 6. 保存对话记录
             String cid = saveConversation(conversationId, messages,
                     ChatMessage.assistant(response.content()));
 
+            span.tag("report.severity", report.severity());
+            span.tag("report.confidence", String.valueOf(report.confidence()));
+
             return Map.of("success", true, "report", report, "conversationId", cid);
         } catch (Exception e) {
+            span.tag("error", e.getMessage());
             return Map.of("success", false, "error", e.getMessage());
+        } finally {
+            span.end();
         }
     }
 
@@ -152,10 +175,12 @@ public class DiagnosisController {
             return Map.of("success", false, "error", "缺少 message 字段");
         }
 
-        try {
+        Span span = tracer.nextSpan().name("POST /api/chat").start();
+        try (var scope = tracer.withSpan(span)) {
+            span.tag("conversationId", conversationId);
+
             // 1. 加载历史并添加追问 System Prompt
             List<ChatMessage> messages = new ArrayList<>();
-            // 注入继续诊断的 System Prompt，让 LLM 知道这是追问场景
             messages.add(ChatMessage.system(
                     "你是一名资深 SRE 和 Java 后端专家。用户正在就之前的异常诊断进行追问，" +
                     "请结合上下文给出专业、具体的回答。如果你需要查看代码仓库或日志，" +
@@ -163,17 +188,23 @@ public class DiagnosisController {
             loadConversationHistory(conversationId, messages);
             messages.add(ChatMessage.user(userMessage));
 
-            // 3. 调用 LLM（带工具）
-            ChatRequest request = new ChatRequest(
-                    messages,
-                    toolRegistry.listDefinitions(),
-                    modelName,
-                    0.3,
-                    1024,
-                    null
-            );
-
-            ChatResponse response = modelClient.chat(request);
+            // 2. 调用 LLM（带工具）
+            Span llmSpan = tracer.nextSpan().name("llm.chat").start();
+            ChatResponse response;
+            try (var llmScope = tracer.withSpan(llmSpan)) {
+                llmSpan.tag("model", modelName);
+                ChatRequest request = new ChatRequest(
+                        messages,
+                        toolRegistry.listDefinitions(),
+                        modelName,
+                        0.3,
+                        1024,
+                        null
+                );
+                response = modelClient.chat(request);
+            } finally {
+                llmSpan.end();
+            }
 
             // 3. 保存对话
             saveConversation(conversationId, messages,
@@ -182,10 +213,14 @@ public class DiagnosisController {
             return Map.of(
                     "success", true,
                     "reply", response.content(),
-                    "conversationId", conversationId
+                    "conversationId", conversationId,
+                    "traceId", span.context().traceId()
             );
         } catch (Exception e) {
+            span.tag("error", e.getMessage());
             return Map.of("success", false, "error", e.getMessage());
+        } finally {
+            span.end();
         }
     }
 
@@ -268,9 +303,13 @@ public class DiagnosisController {
     }
 
     /**
-     * 将 LLM 返回的 JSON 字符串解析为 DiagnosisReport。
+     * 将 LLM 返回的 JSON 字符串解析为 DiagnosisReport，注入当前 traceId。
+     *
+     * @param jsonContent   LLM 返回的 JSON 文本
+     * @param exceptionType 异常类型（解析失败时作为 fallback）
+     * @param traceId       OpenTelemetry Trace ID（V0.5），可关联分布式追踪
      */
-    private DiagnosisReport parseDiagnosisReport(String jsonContent, String exceptionType) {
+    private DiagnosisReport parseDiagnosisReport(String jsonContent, String exceptionType, String traceId) {
         try {
             String json = jsonContent.trim();
             if (json.startsWith("```")) {
@@ -280,7 +319,13 @@ public class DiagnosisController {
                     json = json.substring(start, end).trim();
                 }
             }
-            return objectMapper.readValue(json, DiagnosisReport.class);
+            DiagnosisReport parsed = objectMapper.readValue(json, DiagnosisReport.class);
+            // 用当前 Span 的 traceId 覆盖（LLM 不会生成此字段）
+            return new DiagnosisReport(
+                    parsed.summary(), parsed.exceptionType(), parsed.severity(),
+                    parsed.likelyRootCause(), parsed.impactScope(), parsed.urgency(),
+                    parsed.relatedModules(), parsed.recommendations(),
+                    parsed.confidence(), traceId);
         } catch (Exception e) {
             return new DiagnosisReport(
                     "JSON 解析失败，以下是原始诊断内容",
@@ -291,7 +336,8 @@ public class DiagnosisController {
                     "计划修复",
                     List.of(),
                     List.of("请人工查看原始诊断内容"),
-                    0.0
+                    0.0,
+                    traceId
             );
         }
     }
@@ -301,7 +347,7 @@ public class DiagnosisController {
     public Map<String, Object> health() {
         return Map.of(
                 "status", "UP",
-                "version", "0.4.0-SNAPSHOT",
+                "version", "0.5.0-SNAPSHOT",
                 "prompts", promptRegistry.listNames().size() + " loaded",
                 "tools", toolRegistry.listDefinitions().size() + " registered"
         );

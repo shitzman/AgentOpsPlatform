@@ -12,6 +12,20 @@ spring:
   profiles:
     active: local
 
+# Spring Boot Actuator + Micrometer Tracing + OpenTelemetry
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0  # 开发环境全量采样
+  otlp:
+    tracing:
+      endpoint: ${AGENTOPS_OTEL_ENDPOINT:http://localhost:4318/v1/traces}
+      transport: http
+
 # AgentOps LLM 配置（支持 OpenAI / DeepSeek / 通义千问等兼容 API）
 agentops:
   llm:
