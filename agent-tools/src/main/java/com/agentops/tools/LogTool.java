@@ -6,15 +6,36 @@ import java.util.Map;
 /**
  * 日志查询工具 — 按关键词和时间范围搜索日志。
  *
- * <p>V0.4 提供模拟实现（返回示例日志数据），后续可对接真实日志系统：
+ * <p>V0.5 支持可插拔的日志源后端，通过 {@link LogProvider} 接口
+ * 适配不同的日志存储系统：
  * <ul>
- *   <li>Elasticsearch / OpenSearch</li>
- *   <li>Grafana Loki</li>
- *   <li>阿里云 SLS</li>
- *   <li>本地日志文件</li>
+ *   <li>{@link TextInputLogProvider} — UI 中粘贴的原始文本</li>
+ *   <li>{@link FileLogProvider} — 服务器本地日志文件</li>
+ *   <li>{@link ElasticsearchLogProvider} — ES 日志存储（模拟）</li>
+ * </ul>
+ *
+ * <p>两种构造器：
+ * <ul>
+ *   <li>无参 — 返回模拟数据（向后兼容，全局模式）</li>
+ *   <li>带 {@code LogProvider + LogSourceConfig} — 委托给真实日志源（项目模式）</li>
  * </ul>
  */
 public class LogTool {
+
+    private final LogProvider provider;
+    private final LogSourceConfig config;
+
+    /** 无参构造器（向后兼容 — 返回模拟日志数据） */
+    public LogTool() {
+        this.provider = null;
+        this.config = null;
+    }
+
+    /** 项目级构造器 — 绑定指定日志源 */
+    public LogTool(LogProvider provider, LogSourceConfig config) {
+        this.provider = provider;
+        this.config = config;
+    }
 
     /** log-search 工具定义 */
     public static ToolDefinition definition() {
@@ -34,15 +55,20 @@ public class LogTool {
                         "required", List.of("keyword")));
     }
 
-    /** log-search 执行器（V0.4 模拟实现） */
+    /** log-search 执行器 — 有 provider 时委托，否则返回模拟数据 */
     public ToolExecutor executor() {
+        // 项目模式：委托给真实的日志提供者
+        if (provider != null && config != null) {
+            return args -> provider.search(args, config);
+        }
+
+        // 全局模式：返回模拟数据（向后兼容）
         return args -> {
             String keyword = (String) args.get("keyword");
             String service = (String) args.getOrDefault("service", "unknown");
             int limit = args.containsKey("limit")
                     ? ((Number) args.get("limit")).intValue() : 10;
 
-            // V0.4 模拟日志数据
             String result = String.format("""
                     [%s] 日志搜索结果 (关键词: %s, 最多 %d 条)
 
@@ -52,8 +78,8 @@ public class LogTool {
                     [2026-07-06 17:29:55] INFO  [%s] 请求开始 - GET /api/orders
                     --- 共 3 条模拟日志 ---
 
-                    提示：当前为模拟日志实现。
-                    生产环境请将 LogTool 对接 ELK / Loki / SLS 等日志系统。
+                    提示：当前为全局模式的模拟日志。
+                    请在"项目配置"中为项目添加日志源以使用真实查询。
                     """,
                     service, keyword, limit,
                     service, keyword,

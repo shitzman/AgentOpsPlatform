@@ -1,6 +1,7 @@
 package com.agentops.api.config;
 
 import com.agentops.business.exceptionagent.BusinessExceptionAgent;
+import com.agentops.business.exceptionagent.ProjectManager;
 import com.agentops.memory.InMemoryMemoryStore;
 import com.agentops.memory.MemoryStore;
 import com.agentops.prompts.InMemoryPromptRegistry;
@@ -71,6 +72,26 @@ public class AgentOpsConfig {
             registry.register(new PromptTemplate(name, content));
         }
         return registry;
+    }
+
+    // ---- 日志提供者注册表 (V0.5) ----
+
+    @Bean
+    LogProviderRegistry logProviderRegistry() {
+        InMemoryLogProviderRegistry registry = new InMemoryLogProviderRegistry();
+        registry.register(new TextInputLogProvider());
+        registry.register(new FileLogProvider());
+        registry.register(new ElasticsearchLogProvider());
+        return registry;
+    }
+
+    // ---- 项目管理服务 (V0.5) ----
+
+    @Bean
+    ProjectManager projectManager(MemoryStore memoryStore,
+                                   ToolRegistry toolRegistry,
+                                   LogProviderRegistry logProviderRegistry) {
+        return new ProjectManager(memoryStore, toolRegistry, logProviderRegistry);
     }
 
     // ---- 模型调用 Bean ----

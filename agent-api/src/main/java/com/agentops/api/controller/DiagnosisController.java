@@ -1,7 +1,9 @@
 package com.agentops.api.controller;
 
 import com.agentops.business.exceptionagent.BusinessExceptionAgent;
+import com.agentops.business.exceptionagent.ProjectManager;
 import com.agentops.business.exceptionagent.model.DiagnosisReport;
+import com.agentops.business.exceptionagent.model.Project;
 import com.agentops.business.exceptionagent.model.StackTrace;
 import com.agentops.memory.MemoryEntry;
 import com.agentops.memory.MemoryStore;
@@ -42,6 +44,7 @@ public class DiagnosisController {
     private final PromptRegistry promptRegistry;
     private final ToolRegistry toolRegistry;
     private final MemoryStore memoryStore;
+    private final ProjectManager projectManager;
     private final String modelName;
     private final ObjectMapper objectMapper;
     private final Tracer tracer;
@@ -51,6 +54,7 @@ public class DiagnosisController {
                                PromptRegistry promptRegistry,
                                ToolRegistry toolRegistry,
                                MemoryStore memoryStore,
+                               ProjectManager projectManager,
                                @Value("${agentops.llm.model:deepseek-chat}") String modelName,
                                Tracer tracer) {
         this.workflowEngine = workflowEngine;
@@ -58,6 +62,7 @@ public class DiagnosisController {
         this.promptRegistry = promptRegistry;
         this.toolRegistry = toolRegistry;
         this.memoryStore = memoryStore;
+        this.projectManager = projectManager;
         this.modelName = modelName;
         this.objectMapper = new ObjectMapper();
         this.tracer = tracer;
@@ -78,15 +83,20 @@ public class DiagnosisController {
     public Map<String, Object> diagnose(@RequestBody Map<String, String> body) {
         String rawStackTrace = body.get("stackTrace");
         String conversationId = body.get("conversationId");
+        String projectId = body.get("projectId");
 
         if (rawStackTrace == null || rawStackTrace.isBlank()) {
             return Map.of("success", false, "error", "缺少 stackTrace 字段");
         }
 
+        // 确定使用的工具注册表（项目级 vs 全局）
+        ToolRegistry activeToolRegistry = resolveToolRegistry(projectId);
+
         // 创建诊断 Span，用于分布式追踪
         Span span = tracer.nextSpan().name("POST /api/diagnosis").start();
         try (var scope = tracer.withSpan(span)) {
             span.tag("conversationId", conversationId != null ? conversationId : "new");
+            if (projectId != null) span.tag("projectId", projectId);
 
             // 1. 执行诊断工作流（解析堆栈 + 过滤项目代码）
             WorkflowContext context = new SimpleWorkflowContext();
@@ -96,12 +106,20 @@ public class DiagnosisController {
             StackTrace parsed = result.get(BusinessExceptionAgent.CTX_PARSED_TRACE, StackTrace.class);
             span.tag("exceptionType", parsed.exceptionType());
 
-            // 2. 渲染诊断 System Prompt
+            // 2. 渲染诊断 System Prompt（注入项目上下文）
             String systemPrompt = promptRegistry.render("diagnosis-system", Map.of(
                     "exceptionType", parsed.exceptionType(),
                     "exceptionMessage", parsed.message() != null ? parsed.message() : "无",
                     "rawStackTrace", rawStackTrace
             ));
+            if (projectId != null) {
+                Project project = projectManager.getProject(projectId).orElse(null);
+                if (project != null) {
+                    systemPrompt = systemPrompt + "\n\n## 项目上下文\n" +
+                            "当前检测项目：**" + project.name() + "**\n" +
+                            "项目描述：" + (project.description().isBlank() ? "无" : project.description());
+                }
+            }
 
             // 3. 构建消息列表（含历史对话）
             List<ChatMessage> messages = new ArrayList<>();
@@ -120,7 +138,7 @@ public class DiagnosisController {
                 llmSpan.tag("model", modelName);
                 ChatRequest request = new ChatRequest(
                         messages,
-                        toolRegistry.listDefinitions(),
+                        activeToolRegistry.listDefinitions(),
                         modelName,
                         0.2,
                         2048,
@@ -167,6 +185,7 @@ public class DiagnosisController {
     public Map<String, Object> chat(@RequestBody Map<String, String> body) {
         String conversationId = body.get("conversationId");
         String userMessage = body.get("message");
+        String projectId = body.get("projectId");
 
         if (conversationId == null || conversationId.isBlank()) {
             return Map.of("success", false, "error", "缺少 conversationId（请先调用 /api/diagnosis 获取）");
@@ -174,6 +193,8 @@ public class DiagnosisController {
         if (userMessage == null || userMessage.isBlank()) {
             return Map.of("success", false, "error", "缺少 message 字段");
         }
+
+        ToolRegistry activeToolRegistry = resolveToolRegistry(projectId);
 
         Span span = tracer.nextSpan().name("POST /api/chat").start();
         try (var scope = tracer.withSpan(span)) {
@@ -195,7 +216,7 @@ public class DiagnosisController {
                 llmSpan.tag("model", modelName);
                 ChatRequest request = new ChatRequest(
                         messages,
-                        toolRegistry.listDefinitions(),
+                        activeToolRegistry.listDefinitions(),
                         modelName,
                         0.3,
                         1024,
@@ -222,6 +243,27 @@ public class DiagnosisController {
         } finally {
             span.end();
         }
+    }
+
+    // ---- 工具注册表解析 ----
+
+    /**
+     * 根据 projectId 解析使用的工具注册表。
+     * <ul>
+     *   <li>有 projectId → 调用 ProjectManager 构建项目专属注册表</li>
+     *   <li>无 projectId → 回退到全局 toolRegistry（向后兼容）</li>
+     * </ul>
+     */
+    private ToolRegistry resolveToolRegistry(String projectId) {
+        if (projectId != null && !projectId.isBlank()) {
+            try {
+                return projectManager.buildProjectToolRegistry(projectId);
+            } catch (Exception e) {
+                // 项目不存在或构建失败时回退到全局注册表
+                return toolRegistry;
+            }
+        }
+        return toolRegistry;
     }
 
     // ---- 对话历史管理 ----
