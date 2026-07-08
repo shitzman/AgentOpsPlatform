@@ -4,6 +4,33 @@ All notable changes to AgentOps Platform will be documented in this file.
 
 ## V1.0 (in progress)
 
+### Phase 2 — 数据采集增强
+
+#### Added — 模型层
+
+- `EnvironmentInfo`（agent-tools）：JVM / OS / 内存 / CPU 环境信息记录
+- `GitContext`（agent-tools）：Git 仓库状态快照（分支 + 提交 + Blame + 未提交变更）
+  - 内嵌 `CommitInfo` 和 `BlameInfo` 子记录
+- `DiagnosisContext`（business-exception-agent）：多源数据聚合上下文
+  - 聚合：stackTrace + logContext + gitContext + environment + projectInfo
+  - `toPromptText()` 方法生成 Markdown 格式的 LLM Prompt 注入文本
+
+#### Added — 采集器
+
+- `EnvironmentCollector`（agent-tools）：基于 ManagementFactory 采集 JVM/OS 运行环境
+- `GitContextProvider`（agent-tools）：基于 git 命令收集分支/提交/Blame/变更状态
+  - 内嵌 `FileLine` 记录，避免跨模块类型依赖
+- `LogExtractor`（agent-tools）：从原始日志文本自动提取异常堆栈和上下文行
+  - 支持 Java 异常格式识别（Exception/Error/Throwable）
+  - 支持 Caused by 链式异常
+  - 支持提取异常前后 N 行的日志上下文
+
+#### Added — API
+
+- `POST /api/projects/{id}/context`：项目完整上下文快照端点
+  - 入参：`{ "logContent": "(可选) 原始日志文本" }`
+  - 出参：DiagnosisContext JSON（含环境 + Git + 提取的堆栈和日志上下文）
+
 ### Phase 1 — 持久化基础设施
 
 #### Added — 新模块

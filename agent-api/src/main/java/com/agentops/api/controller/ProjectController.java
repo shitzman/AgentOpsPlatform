@@ -1,9 +1,9 @@
 package com.agentops.api.controller;
 
+import com.agentops.business.exceptionagent.model.DiagnosisContext;
 import com.agentops.repository.MySqlProjectManager;
 import com.agentops.repository.entity.ProjectEntity;
-import com.agentops.tools.LogSourceConfig;
-import com.agentops.tools.LogSourceType;
+import com.agentops.tools.*;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -217,6 +217,67 @@ public class ProjectController {
                 return Map.of("success", false, "error", "日志源不存在: " + logSourceId);
             }
             return Map.of("success", true);
+        } catch (Exception e) {
+            return Map.of("success", false, "error", e.getMessage());
+        }
+    }
+
+    // ========================================================================
+    // 项目上下文快照 (Phase 2)
+    // ========================================================================
+
+    /**
+     * 获取项目的完整上下文快照 — 聚合环境、Git、日志数据。
+     *
+     * <pre>
+     * POST /api/projects/{id}/context
+     * { "logContent": "(可选) 原始日志文本" }
+     * </pre>
+     */
+    @PostMapping("/projects/{id}/context")
+    public Map<String, Object> getProjectContext(@PathVariable String id,
+                                                  @RequestBody Map<String, String> body) {
+        try {
+            Optional<ProjectEntity> projectOpt = projectManager.getProject(id);
+            if (projectOpt.isEmpty()) {
+                return Map.of("success", false, "error", "项目不存在: " + id);
+            }
+            ProjectEntity project = projectOpt.get();
+
+            // 1. 采集运行环境
+            EnvironmentInfo env = EnvironmentCollector.collect();
+
+            // 2. 采集 Git 上下文
+            GitContext gitCtx = null;
+            String repoPath = project.getGitRepoLocalPath();
+            if (repoPath != null && !repoPath.isBlank()) {
+                GitContextProvider gitProvider = new GitContextProvider(repoPath);
+                gitCtx = gitProvider.collect(List.of());
+            }
+
+            // 3. 提取日志中的堆栈和上下文
+            String stackTrace = null;
+            String logContext = null;
+            String logContent = body.get("logContent");
+            if (logContent != null && !logContent.isBlank()) {
+                stackTrace = LogExtractor.extractStackTrace(logContent);
+                if (stackTrace != null) {
+                    logContext = LogExtractor.extractLogContext(logContent, stackTrace);
+                }
+            }
+
+            // 4. 组装 DiagnosisContext
+            DiagnosisContext ctx = new DiagnosisContext(
+                    project.getId(),
+                    project.getName(),
+                    project.getDescription(),
+                    stackTrace,
+                    null,  // parsedStackTrace — 由诊断 Workflow 负责解析
+                    logContext,
+                    gitCtx,
+                    env);
+
+            return Map.of("success", true, "context", ctx);
         } catch (Exception e) {
             return Map.of("success", false, "error", e.getMessage());
         }
