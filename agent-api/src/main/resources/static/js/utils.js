@@ -1,10 +1,11 @@
 /* ================================================================
    utils.js — DOM 工具函数
+   V1.0: 新增 safeJsonArray / formatConfidence / blameLabel
    ================================================================ */
 
 const Utils = {
 
-  /** 简易模板字面量（避免 XSS — 不做 HTML 转义，调用方需自行确保安全） */
+  /** 简易模板字面量 */
   html(strings, ...values) {
     return strings.reduce((r, s, i) => r + s + (values[i] ?? ''), '');
   },
@@ -41,26 +42,21 @@ const Utils = {
     document.getElementById('modalOverlay').style.display = 'none';
   },
 
-  /** 创建 badge 元素 */
-  badge(text, type) {
-    const el = document.createElement('span');
-    el.className = `badge badge-${type}`;
-    el.textContent = text;
-    return el;
-  },
-
-  /** 创建 tool tag */
-  toolTag(name, enabled = true) {
-    const el = document.createElement('span');
-    el.className = `tag tool-tag${enabled ? '' : ' disabled'}`;
-    el.textContent = name;
-    return el;
+  /** 安全解析 JSON 数组（兼容后端字符串/数组两种格式） */
+  safeJsonArray(val) {
+    if (val == null) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      try { const r = JSON.parse(val); return Array.isArray(r) ? r : []; } catch (e) { return []; }
+    }
+    return [];
   },
 
   /** 转义 HTML */
   escapeHtml(str) {
+    if (str == null) return '';
     const div = document.createElement('div');
-    div.textContent = str;
+    div.textContent = String(str);
     return div.innerHTML;
   },
 
@@ -73,18 +69,30 @@ const Utils = {
   /** 格式化严重级别为中文 */
   severityLabel(severity) {
     const labels = { critical: '严重', high: '高', medium: '中', low: '低' };
-    return labels[severity] || severity;
+    return labels[severity] || severity || '未知';
   },
 
-  /** 格式化紧急程度为中文 */
+  /** 格式化置信度为百分比 */
+  formatConfidence(c) {
+    if (c == null) return '—';
+    return Math.round(c * 100) + '%';
+  },
+
+  /** 格式化紧急程度 */
   urgencyLabel(urgency) {
     const labels = { '立即修复': '🔴 立即修复', '计划修复': '🟡 计划修复', '低优先级': '🟢 低优先级' };
-    return labels[urgency] || urgency;
+    return labels[urgency] || urgency || '—';
   },
 
   /** 日志源类型中文名 */
   logSourceTypeLabel(type) {
     const labels = { TEXT_INPUT: '文本输入', FILE_PATH: '文件路径', ELASTICSEARCH: 'Elasticsearch' };
     return labels[type] || type;
+  },
+
+  /** 截断文本 */
+  truncate(str, maxLen) {
+    if (!str) return '';
+    return str.length <= maxLen ? str : str.slice(0, maxLen) + '...';
   }
 };

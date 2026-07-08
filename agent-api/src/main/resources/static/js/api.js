@@ -1,5 +1,6 @@
 /* ================================================================
    api.js — HTTP API 客户端（所有 fetch 请求的单一出口）
+   V1.0: 新增 getProjectContext / getDiagnosisHistory
    ================================================================ */
 
 const Api = {
@@ -34,6 +35,12 @@ const Api = {
     return this._fetch('DELETE', `/api/projects/${id}`);
   },
 
+  // ---- 项目上下文快照 (V1.0 Phase 2) ----
+  async getProjectContext(projectId, logContent) {
+    return this._fetch('POST', `/api/projects/${projectId}/context`,
+      logContent ? { logContent } : {});
+  },
+
   // ---- 工具管理 ----
   async getAvailableTools() {
     return this._fetch('GET', '/api/tools');
@@ -62,5 +69,14 @@ const Api = {
   },
   async chat(data) {
     return this._fetch('POST', '/api/chat', data);
+  },
+
+  // ---- 诊断历史 (V1.0 Phase 3) ----
+  async getDiagnosisHistory(projectId, page, size) {
+    const params = new URLSearchParams();
+    if (projectId) params.set('projectId', projectId);
+    params.set('page', page || 0);
+    params.set('size', size || 20);
+    return this._fetch('GET', `/api/diagnosis?${params.toString()}`);
   }
 };

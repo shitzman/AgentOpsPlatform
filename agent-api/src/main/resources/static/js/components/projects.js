@@ -63,12 +63,12 @@ const ProjectsTab = {
         </div>
         <div class="project-card-meta">Git 本地路径：<span>${p.gitRepoLocalPath || '未配置'}</span></div>
         ${p.gitRepoUrl ? Utils.html`<div class="project-card-meta">Git 远程：<span>${Utils.escapeHtml(p.gitRepoUrl)}</span></div>` : ''}
-        <div class="project-card-meta">日志源：<span>${(p.logSourceIds || []).length} 个</span></div>
+        <div class="project-card-meta">日志源：<span>${Utils.safeJsonArray(p.logSourceIds).length} 个</span></div>
         <div>
           <span style="font-size:12px;color:var(--color-text-secondary)">启用的工具：</span>
-          ${(p.enabledTools || []).length === 0
+          ${Utils.safeJsonArray(p.enabledTools).length === 0
             ? '<span style="font-size:12px;color:var(--color-text-secondary)">（无）</span>'
-            : (p.enabledTools || []).map(t => `<span class="tag tool-tag">${t}</span>`).join('')}
+            : Utils.safeJsonArray(p.enabledTools).map(t => `<span class="tag tool-tag">${t}</span>`).join('')}
         </div>
         <div class="project-card-actions">
           <span style="font-size:12px;color:var(--color-text-secondary)">创建于 ${Utils.formatTime(p.createdAt)}</span>
@@ -150,7 +150,7 @@ const ProjectsTab = {
 
     // 如果是编辑模式，填充工具复选框
     if (isEdit) {
-      const existingTools = existing.enabledTools || [];
+      const existingTools = Utils.safeJsonArray(existing.enabledTools);
       const container = document.getElementById('projFormTools');
       if (container) {
         container.innerHTML = AppState.tools.map(t => Utils.html`

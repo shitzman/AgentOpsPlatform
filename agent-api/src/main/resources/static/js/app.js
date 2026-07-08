@@ -1,5 +1,6 @@
 /* ================================================================
    app.js — 应用入口：全局状态、事件总线、选项卡管理
+   V1.0: 新增诊断历史选项卡
    ================================================================ */
 
 const AppState = {
@@ -15,7 +16,6 @@ const EventBus = {
   on(event, callback) {
     if (!this._listeners[event]) this._listeners[event] = [];
     this._listeners[event].push(callback);
-    // 返回取消订阅函数
     return () => { this._listeners[event] = this._listeners[event].filter(cb => cb !== callback); };
   },
 
@@ -44,6 +44,7 @@ const App = {
     DiagnosisTab.init(document.getElementById('panel-diagnosis'));
     ProjectsTab.init(document.getElementById('panel-projects'));
     LogSourcesTab.init(document.getElementById('panel-logsources'));
+    HistoryTab.init(document.getElementById('panel-history'));
 
     // 全局状态同步
     EventBus.on('projects-changed', ({ projects }) => {
