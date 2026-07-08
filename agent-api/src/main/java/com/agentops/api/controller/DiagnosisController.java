@@ -285,10 +285,11 @@ public class DiagnosisController {
             if (projectId != null && !projectId.isBlank()) {
                 wrapper.eq("project_id", projectId);
             }
-            wrapper.orderByDesc("created_at");
-
-            // 简易分页
+            // 先查总数（不带 ORDER BY / LIMIT，H2 要求聚合查询不能有 ORDER BY）
             long total = diagnosisReportMapper.selectCount(wrapper);
+
+            // 再加排序和分页
+            wrapper.orderByDesc("created_at");
             wrapper.last("LIMIT " + (page * size) + "," + size);
             List<DiagnosisReportEntity> reports = diagnosisReportMapper.selectList(wrapper);
 
