@@ -1,27 +1,33 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to AgentOps Platform will be documented in this file.
 
-## Unreleased
+## V1.0 (in progress)
 
-### Added
+### Phase 1 — 持久化基础设施
 
-- Added project bootstrap prompt for first-time AI agent onboarding.
-- Added continue-development prompt for task-by-task implementation.
-- Added architecture, review, bugfix, refactor, and release prompt assets.
-- Added repository-level AI collaboration instructions in `AGENTS.md` and `CLAUDE.md`.
-- Added initial roadmap, architecture, and task tracking documents.
-- Added the initial Maven multi-module skeleton with root aggregator POM and module POMs.
-- Added Java 21 and Spring Boot 3.5.7 parent build configuration.
-- Added standard Maven source, resource, and test placeholder structure for all platform modules.
-- Added Tool Registry interfaces: `ToolDefinition`, `ToolResult`, `ToolExecutor`, and `ToolRegistry`.
-- Added Prompt Registry interfaces: `PromptTemplate` with `{{变量名}}` placeholder rendering, and `PromptRegistry`.
-- Added lightweight Workflow interfaces: `WorkflowContext`, `WorkflowStep`, `WorkflowStepException`, `WorkflowDefinition`, and `WorkflowEngine`.
-- Added Memory interfaces: `MemoryEntry` and `MemoryStore` with CRUD and search operations.
-- Added OpenAI Java SDK integration boundary: `ChatMessage`, `ToolCall`, `ChatRequest`, `ChatResponse`, `ModelClient`, and `ModelClientException` in `agent-runtime`.
-- Added Docker Compose baseline with MySQL 8.0, Redis 7, Prometheus, Grafana, and OpenTelemetry Collector.
-- Removed Kafka from infrastructure (defer to later milestone if needed).
-- Switched from PostgreSQL to MySQL for better enterprise compatibility.
+#### Added — 新模块
+
+- 新建 `agent-repository` 模块：统一的 MySQL 数据持久化层
+  - MyBatis-Plus 3.5.10.1 + MySQL Connector J
+  - Entity 层：ProjectEntity / LogSourceEntity / ConversationEntity / DiagnosisReportEntity / MemoryEntryEntity
+  - Mapper 层：全部继承 BaseMapper<T>，开箱即用 CRUD
+  - MySqlMemoryStore：MemoryStore 的 MySQL 实现（替换 InMemoryMemoryStore）
+  - MySqlProjectManager：Project/LogSource CRUD 服务（基于 Mapper，替换旧版 JSON 序列化方案）
+
+#### Changed — 模块调整
+
+- `business-exception-agent`：移除 ProjectManager 和 Project record（迁入 agent-repository）
+- `agent-api`：新增 agent-repository 依赖，DataSource + MyBatis-Plus 自动配置
+- `application.yml`：新增 MySQL 数据源配置，开发环境保留 H2 选项
+- `docker/mysql/init.sql`：新增 projects / log_sources / conversations 表
+
+#### Architecture
+
+- 新建 `agent-repository` 模块负责所有数据持久化
+- Entity 类使用 MyBatis-Plus 注解，Mapper 继承 BaseMapper
+- MySqlMemoryStore 实现 MemoryStore 接口，可无缝替换 InMemory 版本
+- 开发 profile 使用 H2 内存数据库，生产 profile 使用 MySQL
 
 ## V0.5
 
@@ -96,3 +102,23 @@ All notable changes to AgentOps Platform will be documented in this file.
 - 默认 LLM 使用 DeepSeek（国内可直接访问）
 - Added Business Exception Agent with `StackTrace`, `StackTraceFrame`, `DiagnosisReport` models, 3-step diagnosis workflow, and diagnosis system prompt template.
 
+## V0.1 (Initial)
+
+### Added
+
+- Added project bootstrap prompt for first-time AI agent onboarding.
+- Added continue-development prompt for task-by-task implementation.
+- Added architecture, review, bugfix, refactor, and release prompt assets.
+- Added repository-level AI collaboration instructions in `AGENTS.md` and `CLAUDE.md`.
+- Added initial roadmap, architecture, and task tracking documents.
+- Added the initial Maven multi-module skeleton with root aggregator POM and module POMs.
+- Added Java 21 and Spring Boot 3.5.7 parent build configuration.
+- Added standard Maven source, resource, and test placeholder structure for all platform modules.
+- Added Tool Registry interfaces: `ToolDefinition`, `ToolResult`, `ToolExecutor`, and `ToolRegistry`.
+- Added Prompt Registry interfaces: `PromptTemplate` with `{{变量名}}` placeholder rendering, and `PromptRegistry`.
+- Added lightweight Workflow interfaces: `WorkflowContext`, `WorkflowStep`, `WorkflowStepException`, `WorkflowDefinition`, and `WorkflowEngine`.
+- Added Memory interfaces: `MemoryEntry` and `MemoryStore` with CRUD and search operations.
+- Added OpenAI Java SDK integration boundary: `ChatMessage`, `ToolCall`, `ChatRequest`, `ChatResponse`, `ModelClient`, and `ModelClientException` in `agent-runtime`.
+- Added Docker Compose baseline with MySQL 8.0, Redis 7, Prometheus, Grafana, and OpenTelemetry Collector.
+- Removed Kafka from infrastructure (defer to later milestone if needed).
+- Switched from PostgreSQL to MySQL for better enterprise compatibility.

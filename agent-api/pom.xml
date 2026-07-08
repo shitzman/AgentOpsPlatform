@@ -51,6 +51,11 @@
             <artifactId>agent-memory</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.agentops</groupId>
+            <artifactId>agent-repository</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- Actuator — 健康检查、指标和链路追踪基础设施 -->
         <dependency>

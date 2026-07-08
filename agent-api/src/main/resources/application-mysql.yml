@@ -1,0 +1,17 @@
+# AgentOps Platform — MySQL 数据源配置
+#
+# 使用方式：
+#   mvn spring-boot:run -pl agent-api -Dspring-boot.run.profiles=mysql
+#
+# 前置条件：
+#   docker compose -f docker/docker-compose.yml up -d
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/agentops?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${AGENTOPS_DB_USER:agentops}
+    password: ${AGENTOPS_DB_PASSWORD:agentops}
+  sql:
+    init:
+      mode: never  # MySQL 表由 docker/mysql/init.sql 管理

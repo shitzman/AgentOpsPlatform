@@ -54,24 +54,27 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 验证：
 ```bash
 mvn -version
-# 预期输出: Java version: 21.0.6, vendor: Oracle Corporation
+# 预期输出: Java version: 21.0.x
 ```
 
-构建：
+构建命令：
 ```bash
 mvn clean compile      # 编译全部模块
 mvn clean test         # 运行测试（当前 24 个用例）
 mvn clean install      # 完整构建并安装到本地仓库
+mvn spring-boot:run -pl agent-api   # 启动应用（端口 8088）
 ```
 
-启动应用：
+启动应用完整流程：
 ```powershell
-# 需先设置 LLM API Key
-$env:AGENTOPS_LLM_API_KEY = "sk-xxx"
-# 切换到 JDK 21
+# 1. 切换到 JDK 21
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-# 启动
+
+# 2. 设置 LLM API Key
+$env:AGENTOPS_LLM_API_KEY = "sk-xxxxxxxx"
+
+# 3. 启动
 mvn spring-boot:run -pl agent-api
 ```
 
@@ -80,17 +83,21 @@ mvn spring-boot:run -pl agent-api
 docker compose -f docker/docker-compose.yml up -d
 ```
 
+详细环境配置（不同 LLM 提供商、IDE 运行、打包部署等）见 `docs/RUNBOOK.md`。
+
 ## 编码规范
 
 ### 推荐模式
+
 - **Java 21** 现代特性（records、sealed types、适时使用 pattern matching）
 - **构造器注入** 优于字段注入
 - **Record** 用于不可变数据传输对象
 - **接口优先的模块边界** — 每个模块通过接口暴露合约
-- **LLM 响应的结构化输出**
+- **LLM 响应的结构化输出** — JSON Mode（`response_format: json_object`）
 - **工具和核心工作流行为的单元测试**
 
 ### 禁止模式
+
 - God Service（单个类承担过多职责）
 - 臃肿的 Controller
 - 静态工具类泛滥
@@ -98,68 +105,83 @@ docker compose -f docker/docker-compose.yml up -d
 - Prompt 字符串散落在 Java 类中
 - 未经计划的依赖添加
 
-### 提交规范
+## Git 工作流
 
-```
-feat: 添加 <功能>
-fix: 修复 <问题>
-refactor: 重构 <内容>
-docs: 更新 <文档>
-test: 添加 <测试内容> 的测试
-chore: <杂项>
-```
+### 双远程仓库
 
-每个已完成任务单独提交。不要批量提交无关变更。
-
-## Git 远程仓库
-
-| 远程 | URL | 用途 |
-|--------|-----|---------|
+| Remote | URL | 用途 |
+|--------|-----|------|
 | `origin` | `https://gitee.com/shitzman/agent-ops-platform.git` | 主仓库（Gitee） |
+| `github-origin` | `https://github.com/shitzman/AgentOpsPlatform.git` | 镜像仓库（GitHub） |
 
-完成任务后推送：
+任务完成时推送到两个远程：
 ```bash
 git push origin master
+git push github-origin master
 ```
 
-## 当前里程碑：V0.5 可观测性上下文
+### 提交规范
 
-目标：打通 OpenTelemetry 链路追踪，支持跨服务根因分析。
+语义化提交信息：
 
-**进度概览：**
+| 前缀 | 用途 |
+|------|------|
+| `feat:` | 新功能 |
+| `fix:` | 缺陷修复 |
+| `refactor:` | 代码重构 |
+| `docs:` | 文档更新 |
+| `test:` | 测试添加或更新 |
 
-| 里程碑 | 状态 |
-|----------|------|
-| V0.1 平台基础 | ✅ 完成 |
-| V0.2 日志诊断 MVP | ✅ 完成 |
-| V0.3 诊断质量增强 | ✅ 完成 |
-| V0.4 工具集成 | ✅ 完成 |
-| V0.5 可观测性上下文 | 🚧 进行中 |
+示例：
+```
+feat: add Tool Registry interface
 
-**V0.5 已完成：**
-- [x] 集成 OpenTelemetry（Trace 采集与上报）
-- [x] 增强 DiagnosisReport：关联 traceId
+- Define Tool contract with ToolDefinition and ToolExecutor
+- Add ToolRegistry SPI
+- Add package-info.java for agent-tools module
 
-**V0.5 待完成：**
-1. 实现 Prometheus Tool（prometheus-query：按 PromQL 查询指标）
-2. Trace 与指标关联分析
-3. 诊断工作流支持跨服务调用链分析
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
 
-权威任务清单见 [TASKS.md](../../TASKS.md)。
+每个任务完成后提交，不要将无关变更合并到一个提交中。
 
-## 测试策略
+## 测试指南
 
-项目期望：
-- 新增工具实现时包含单元测试
-- 核心工作流行为包含单元测试
-- 测试位于对应模块的 `src/test/java` 下
-- 当前 24 个测试用例分布在 4 个测试类中
+### 当前覆盖情况
 
-## 修改代码时
+| 模块 | 测试文件 | 用例数 | 覆盖内容 |
+|------|------|:-----:|------|
+| `agent-prompts` | `PromptTemplateTest.java` | 7 | 模板渲染、多变量、异常、空模板 |
+| `agent-workflow` | `SequentialWorkflowEngineTest.java` | 6 | 步骤执行、Context 传递、错误处理 |
+| `agent-tools` | `InMemoryToolRegistryTest.java` | 5 | 注册、重复、注销、列表、不存在 |
+| `agent-memory` | `InMemoryMemoryStoreTest.java` | 6 | CRUD、搜索、ID 生成 |
 
-- **添加新模块接口**：更新 `ARCHITECTURE.md`、`AGENTS.md` 边界描述和模块 `pom.xml`
-- **添加领域 Agent**：在其自有模块下创建，保持薄层（组合原语），不添加直接外部访问
-- **添加工具**：实现 `ToolExecutor`，在 `ToolRegistry` 中注册，添加单元测试
-- **添加 Prompt**：存储在 `agent-prompts` 资源中，在 `PromptRegistry` 中注册
-- **变更架构**：先运行 `ARCHITECT_PROMPT.md` 评审，更新 `ARCHITECTURE.md`，在 `DECISIONS/` 中记录决策
-- **更新 OpenWiki**：架构或流程变更后同步更新 OpenWiki 文档
+### 缺失测试的模块
+
+| 模块 | 需要添加的测试 |
+|------|------|
+| `agent-runtime` | `OpenAIModelClient` 的请求构建、JSON 解析、错误处理 |
+| `agent-api` | Controller 集成测试（Mock LLM）、ProjectController CRUD |
+| `business-exception-agent` | `BusinessExceptionAgent` 工作流、`ProjectManager` CRUD |
+| `agent-tools` | `GitTool`、`LogTool`、各 `LogProvider` 实现、`FilteredToolRegistry` |
+
+### 测试模式
+
+测试使用 JUnit 5 + AssertJ。参考现有测试：
+
+- `/agent-prompts/src/test/java/com/agentops/prompts/PromptTemplateTest.java` — 模板测试模式
+- `/agent-workflow/src/test/java/com/agentops/workflow/SequentialWorkflowEngineTest.java` — 工作流测试模式
+- `/agent-tools/src/test/java/com/agentops/tools/InMemoryToolRegistryTest.java` — 注册表测试模式
+
+### 运行测试
+
+```bash
+# 全部测试
+mvn test
+
+# 单个模块
+mvn test -pl agent-tools
+
+# 单个测试类
+mvn test -pl agent-tools -Dtest=InMemoryToolRegistryTest
+```

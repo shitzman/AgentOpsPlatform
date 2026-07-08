@@ -1,13 +1,13 @@
 package com.agentops.api.controller;
 
 import com.agentops.business.exceptionagent.BusinessExceptionAgent;
-import com.agentops.business.exceptionagent.ProjectManager;
 import com.agentops.business.exceptionagent.model.DiagnosisReport;
-import com.agentops.business.exceptionagent.model.Project;
 import com.agentops.business.exceptionagent.model.StackTrace;
 import com.agentops.memory.MemoryEntry;
 import com.agentops.memory.MemoryStore;
 import com.agentops.prompts.PromptRegistry;
+import com.agentops.repository.MySqlProjectManager;
+import com.agentops.repository.entity.ProjectEntity;
 import com.agentops.runtime.model.ModelClient;
 import com.agentops.runtime.model.ChatMessage;
 import com.agentops.runtime.model.ChatRequest;
@@ -28,6 +28,8 @@ import java.util.*;
 /**
  * 诊断 REST API — 支持多轮对话和工具调用。
  *
+ * <p>V1 变更：使用 MySqlProjectManager + ProjectEntity（MySQL 持久化）。
+ *
  * <p>端点：
  * <ul>
  *   <li>POST /api/diagnosis — 提交诊断（支持多轮对话）</li>
@@ -44,7 +46,7 @@ public class DiagnosisController {
     private final PromptRegistry promptRegistry;
     private final ToolRegistry toolRegistry;
     private final MemoryStore memoryStore;
-    private final ProjectManager projectManager;
+    private final MySqlProjectManager projectManager;
     private final String modelName;
     private final ObjectMapper objectMapper;
     private final Tracer tracer;
@@ -54,7 +56,7 @@ public class DiagnosisController {
                                PromptRegistry promptRegistry,
                                ToolRegistry toolRegistry,
                                MemoryStore memoryStore,
-                               ProjectManager projectManager,
+                               MySqlProjectManager projectManager,
                                @Value("${agentops.llm.model:deepseek-chat}") String modelName,
                                Tracer tracer) {
         this.workflowEngine = workflowEngine;
@@ -113,11 +115,13 @@ public class DiagnosisController {
                     "rawStackTrace", rawStackTrace
             ));
             if (projectId != null) {
-                Project project = projectManager.getProject(projectId).orElse(null);
+                ProjectEntity project = projectManager.getProject(projectId).orElse(null);
                 if (project != null) {
+                    String desc = project.getDescription() != null && !project.getDescription().isBlank()
+                            ? project.getDescription() : "无";
                     systemPrompt = systemPrompt + "\n\n## 项目上下文\n" +
-                            "当前检测项目：**" + project.name() + "**\n" +
-                            "项目描述：" + (project.description().isBlank() ? "无" : project.description());
+                            "当前检测项目：**" + project.getName() + "**\n" +
+                            "项目描述：" + desc;
                 }
             }
 
@@ -389,7 +393,7 @@ public class DiagnosisController {
     public Map<String, Object> health() {
         return Map.of(
                 "status", "UP",
-                "version", "0.5.0-SNAPSHOT",
+                "version", "1.0.0-SNAPSHOT",
                 "prompts", promptRegistry.listNames().size() + " loaded",
                 "tools", toolRegistry.listDefinitions().size() + " registered"
         );

@@ -1,7 +1,7 @@
 package com.agentops.api.controller;
 
-import com.agentops.business.exceptionagent.ProjectManager;
-import com.agentops.business.exceptionagent.model.Project;
+import com.agentops.repository.MySqlProjectManager;
+import com.agentops.repository.entity.ProjectEntity;
 import com.agentops.tools.LogSourceConfig;
 import com.agentops.tools.LogSourceType;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +10,8 @@ import java.util.*;
 
 /**
  * 项目管理 REST API — 检测项目的 CRUD、日志源管理和工具配置。
+ *
+ * <p>V1 变更：使用 MySqlProjectManager（MySQL 持久化），ProjectEntity 替代旧 Project record。
  *
  * <p>端点分组：
  * <ul>
@@ -22,9 +24,9 @@ import java.util.*;
 @RequestMapping("/api")
 public class ProjectController {
 
-    private final ProjectManager projectManager;
+    private final MySqlProjectManager projectManager;
 
-    public ProjectController(ProjectManager projectManager) {
+    public ProjectController(MySqlProjectManager projectManager) {
         this.projectManager = projectManager;
     }
 
@@ -41,7 +43,7 @@ public class ProjectController {
                 return Map.of("success", false, "error", "缺少 name 字段");
             }
 
-            Project project = projectManager.createProject(
+            ProjectEntity project = projectManager.createProject(
                     name,
                     body.getOrDefault("description", ""),
                     body.getOrDefault("gitRepoUrl", ""),
@@ -58,7 +60,7 @@ public class ProjectController {
     @GetMapping("/projects")
     public Map<String, Object> listProjects() {
         try {
-            List<Project> projects = projectManager.listProjects();
+            List<ProjectEntity> projects = projectManager.listProjects();
             return Map.of("success", true, "projects", projects);
         } catch (Exception e) {
             return Map.of("success", false, "error", e.getMessage());
@@ -69,7 +71,7 @@ public class ProjectController {
     @GetMapping("/projects/{id}")
     public Map<String, Object> getProject(@PathVariable String id) {
         try {
-            Optional<Project> project = projectManager.getProject(id);
+            Optional<ProjectEntity> project = projectManager.getProject(id);
             if (project.isEmpty()) {
                 return Map.of("success", false, "error", "项目不存在: " + id);
             }
@@ -85,7 +87,7 @@ public class ProjectController {
     public Map<String, Object> updateProject(@PathVariable String id,
                                               @RequestBody Map<String, Object> body) {
         try {
-            Optional<Project> updated = projectManager.updateProject(id, body);
+            Optional<ProjectEntity> updated = projectManager.updateProject(id, body);
             if (updated.isEmpty()) {
                 return Map.of("success", false, "error", "项目不存在: " + id);
             }
@@ -135,7 +137,7 @@ public class ProjectController {
                 return Map.of("success", false, "error", "缺少 toolNames 字段");
             }
 
-            Optional<Project> updated = projectManager.enableTools(id, toolNames);
+            Optional<ProjectEntity> updated = projectManager.enableTools(id, toolNames);
             if (updated.isEmpty()) {
                 return Map.of("success", false, "error", "项目不存在: " + id);
             }

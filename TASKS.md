@@ -1,81 +1,74 @@
-﻿# Tasks
+# Tasks
 
-## Current Milestone: V0.1 Platform Foundation
+## V1.0 Phase 1 — 持久化基础设施
 
-- [x] Create AI development prompt assets.
-- [x] Create Maven multi-module project skeleton.
-- [x] Add Java 21 and Spring Boot 3.x parent configuration.
-- [x] Add module placeholders for runtime, API, tools, memory, workflow, prompts, MCP, and Business Exception Agent.
-- [x] Define Tool Registry interfaces.
-- [x] Define Prompt Registry interfaces.
-- [x] Define lightweight Workflow interfaces.
-- [x] Define Memory interfaces.
-- [x] Add OpenAI Java SDK integration boundary.
-- [x] Add Docker Compose baseline for MySQL, Redis, OpenTelemetry, Prometheus, and Grafana.
-- [x] Add first Business Exception Agent log diagnosis workflow.
+Goal: MySQL + MyBatis-Plus 替换所有 InMemory 实现，项目配置和对话历史重启不丢失。
 
-## V0.2 Log Diagnosis MVP
+### 模块结构
 
-- [x] 实现 SimpleWorkflowContext（基于 LinkedHashMap）
-- [x] 实现 SequentialWorkflowEngine（顺序执行器）
-- [x] 实现 InMemoryToolRegistry（内存工具注册表）
-- [x] 实现 InMemoryPromptRegistry（内存 Prompt 注册表 + classpath 加载）
-- [x] 实现 InMemoryMemoryStore（内存存储）
-- [x] 实现 OpenAIModelClient（HttpClient + Jackson，兼容 DeepSeek/通义千问）
-- [x] 搭建 Spring Boot API 层（AgentOpsApplication + AgentOpsConfig + DiagnosisController）
-- [x] 添加 application.yml 配置（支持环境变量切换 LLM 服务商）
+- [x] 新建 `agent-repository` 模块（pom.xml + 目录骨架）
+- [x] 父 POM 注册 `agent-repository` 子模块 + MyBatis-Plus 版本管理
+- [x] `agent-api/pom.xml` 添加 `agent-repository` 依赖
 
-## V0.3 Diagnosis Quality Enhancement
+### Entity 层
 
-- [x] JSON Mode 结构化输出（response_format: json_object）
-- [x] 增强 DiagnosisReport：新增 severity / impactScope / urgency 维度
-- [x] 优化诊断 System Prompt（嵌入 JSON Schema，新增诊断维度）
-- [x] Controller 解析 LLM JSON 响应为 DiagnosisReport（含降级处理）
-- [x] ChatRequest 新增 responseFormat 字段支持 JSON Mode
-- [x] 添加单元测试：PromptTemplate / ToolRegistry / WorkflowEngine / MemoryStore（4 类 20 个用例）
-- [x] 集成 Swagger / OpenAPI 文档（springdoc-openapi）
+- [x] `ProjectEntity` — 映射 `projects` 表
+- [x] `LogSourceEntity` — 映射 `log_sources` 表
+- [x] `ConversationEntity` — 映射 `conversations` 表
+- [x] `DiagnosisReportEntity` — 映射 `diagnosis_reports` 表（表已存在）
+- [x] `MemoryEntryEntity` — 映射 `memory_entries` 表（表已存在）
 
-## V0.4 Tool Integration
+### Mapper 层
 
-- [x] Git Tool：git-log / git-blame / git-show（通过 ProcessBuilder 调本地 git）
-- [x] Log Tool：log-search（模拟实现，可对接 ELK / Loki / SLS）
-- [x] 多轮对话：conversationId + 历史加载/保存 + POST /api/chat 追问端点
-- [x] AgentOpsConfig 启动时自动注册 4 个工具到 ToolRegistry
+- [x] `ProjectMapper` extends BaseMapper<ProjectEntity>
+- [x] `LogSourceMapper` extends BaseMapper<LogSourceEntity>
+- [x] `ConversationMapper` extends BaseMapper<ConversationEntity>
+- [x] `DiagnosisReportMapper` extends BaseMapper<DiagnosisReportEntity>
+- [x] `MemoryEntryMapper` extends BaseMapper<MemoryEntryEntity>
 
-## V0.5 Observability Context + 项目配置管理
+### 持久化实现
 
-Goal: 打通可观测性数据 + Web 端项目管理。
+- [x] `MySqlMemoryStore` implements MemoryStore（基于 MemoryEntryMapper）
+- [x] `MySqlProjectManager` — 从 business-exception-agent 迁入，重写为基于 Mapper
 
-**可观测性：**
-- [x] 集成 OpenTelemetry（Trace 采集与上报）
-- [x] 增强 DiagnosisReport：关联 traceId / spanId
+### 配置与集成
+
+- [x] 更新 `docker/mysql/init.sql` — 新增 projects / log_sources / conversations 表
+- [x] `application.yml` 新增 MySQL 数据源配置
+- [x] `application-local.yml` 新增本地 H2 开发配置
+- [x] `AgentOpsConfig` — DataSource + MyBatis-Plus + Bean 切换
+- [ ] 更新 `ProjectController` imports → 使用 MySqlProjectManager + ProjectEntity
+- [ ] 更新 `DiagnosisController` — 对话历史使用 MySqlMemoryStore
+- [ ] 移除旧代码：business-exception-agent 中的 ProjectManager + Project record
+- [ ] 编译验证 + 单元测试
+
+## V0.5 剩余待办（推迟至 V2）
+
 - [ ] 实现 Prometheus Tool（prometheus-query：按 PromQL 查询指标）
 - [ ] Trace 与指标关联分析
 - [ ] 诊断工作流支持跨服务调用链分析
 
-**项目配置管理（新增）：**
-- [x] Project 模型 + CRUD（MemoryStore 持久化，type="project"）
-- [x] LogSourceConfig 模型 + LogSourceType 枚举（TEXT_INPUT / FILE_PATH / ELASTICSEARCH）
-- [x] LogProvider 接口 + 3 种实现（TextInput / File / Elasticsearch）
-- [x] LogProviderRegistry（可插拔日志源注册表）
-- [x] FilteredToolRegistry（项目级工具过滤装饰器）
-- [x] ProjectManager 核心服务（buildProjectToolRegistry 为项目构建专属工具集）
-- [x] ProjectController REST API（11 个端点：项目/日志源/工具 CRUD）
-- [x] LogTool 重构为可插拔（支持绑定 LogProvider + LogSourceConfig）
-- [x] DiagnosisController 支持可选 projectId（项目级诊断 vs 全局模式）
-- [x] Web 控制台：多文件模块化前端（7 文件，事件驱动架构）
-  - 3 个选项卡：诊断测试 / 项目配置 / 日志源管理
-  - EventBus 组件解耦 + AppState 全局状态
-  - 无框架依赖，纯 fetch() + DOM 操作
+## V1.0 Phase 2 — 数据采集增强（待开始）
+
+- [ ] EnvironmentCollector — 采集目标项目运行环境
+- [ ] GitContextProvider — 自动检测 Git 仓库上下文
+- [ ] LogExtractor — 从日志文件自动提取异常堆栈
+- [ ] DiagnosisContext 模型增强（聚合 stackTrace + logContext + gitContext + environment）
+- [ ] POST /api/projects/{id}/context — 项目完整上下文快照端点
+
+## V1.0 Phase 3 — 多源关联诊断增强（待开始）
+
+- [ ] 重写诊断 System Prompt（加入 Git blame + 日志上下文 + 环境变量分析引导）
+- [ ] DiagnosisReport 新增 gitBlameHints / environmentFactors / logContextSummary 字段
+- [ ] MultiSourceDiagnosisWorkflow（采集上下文 → 日志片段 → Git Blame → 渲染 → LLM）
+- [ ] GET /api/diagnosis?projectId=X — 诊断历史分页查询
+- [ ] 对话历史持久化查询与回溯
 
 ## Backlog
 
-- [ ] 实现 MySQL 版 MemoryStore（替换内存实现）
-- [ ] 实现 Redis 版 MemoryStore（会话缓存 + 短期记忆）
-- [ ] Patch 方案生成工作流（V0.6 Assisted Fixing）
-- [ ] Reviewer 审核步骤（AI 自审 + 人工确认）
-- [ ] GitHub / GitLab 集成规划（V0.6）
-- [ ] 规划 Feishu / WeCom / DingTalk 通知插件
-
-
-
+- [ ] Redis 版 MemoryStore（会话缓存 + 短期记忆，V2）
+- [ ] Patch 方案生成工作流（V3）
+- [ ] Reviewer 审核步骤（AI 自审 + 人工确认，V3）
+- [ ] GitHub / GitLab 集成（V3）
+- [ ] 飞书 / 企业微信 / 钉钉通知插件（V2）
+- [ ] MCP 集成（待有明确使用场景）

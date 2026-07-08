@@ -1,28 +1,135 @@
 # AgentOps Platform — OpenWiki 快速入门
 
-AgentOps Platform 是一个面向工程团队的**企业级 Java AI Agent 智能开发平台**。首个领域 Agent 是 **Business Exception Agent（业务异常 Agent）**，负责分析生产环境异常、通过代码和 Git 历史追踪根因，未来将支持生成安全的修复建议。
+AgentOps Platform 是一个面向企业工程团队的 **Java AI Agent 智能研发平台**。首个领域 Agent 是 **Business Exception Agent（业务异常诊断 Agent）**：接收 Java 堆栈 → LLM 根因分析 → 结构化诊断报告，未来将支持自动修复建议。
 
-这不是一个 Demo — 这是一个为长期维护、渐进扩展和商业化而设计的平台。
+这不是一个 Demo — 这是为长期维护、渐进扩展和商业化设计的平台。
 
-## 当前状态
+## 当前状态：V0.5
 
-**V0.5 — 可观测性上下文阶段。** 项目已完成 Maven 多模块骨架、全部核心接口定义与实现、端到端诊断链路、工具集成，正在打通 OpenTelemetry 链路追踪。
+**V0.5 — 可观测性上下文 + 项目配置管理。** 端到端诊断链路已打通，已集成 OpenTelemetry 链路追踪。
 
-| 状态 | 模块 | 已实现内容 |
-|--------|--------|--------------------|
-| ✅ 完成 | `agent-tools` | `ToolRegistry`、`ToolDefinition`、`ToolExecutor`、`ToolResult` + `GitTool` + `LogTool` |
-| ✅ 完成 | `agent-prompts` | `PromptRegistry`、`PromptTemplate` + InMemory 实现 + classpath 加载 |
-| ✅ 完成 | `agent-workflow` | `SequentialWorkflowEngine` + `SimpleWorkflowContext` + 工作流接口 |
-| ✅ 完成 | `agent-memory` | `MemoryStore` + `MemoryEntry` + InMemory 实现（支持 conversation 持久化） |
-| ✅ 完成 | `agent-runtime` | `OpenAIModelClient`（HttpClient + Jackson）+ `ChatRequest`/`ChatResponse` + 多模型兼容 |
-| ✅ 完成 | `agent-api` | Spring Boot REST API + `DiagnosisController` + Actuator + OpenTelemetry |
-| ⬜ 占位 | `agent-mcp` | MCP 集成预留 |
-| ✅ 完成 | `business-exception-agent` | 3 步诊断工作流 + `DiagnosisReport` + JSON Mode + System Prompt |
+| 模块 | 状态 | 核心能力 |
+|------|:----:|------|
+| `agent-tools` | ✅ | ToolRegistry 接口体系 + GitTool + LogTool + 可插拔日志源（3 种实现） |
+| `agent-prompts` | ✅ | PromptTemplate 变量渲染 + 从 classpath 自动加载 prompt 文件 |
+| `agent-workflow` | ✅ | SequentialWorkflowEngine + SimpleWorkflowContext（顺序执行） |
+| `agent-memory` | ✅ | MemoryStore 接口 + InMemory 实现（支持 conversation 持久化） |
+| `agent-runtime` | ✅ | OpenAIModelClient（HttpClient + Jackson，兼容 DeepSeek/OpenAI/通义千问）+ JSON Mode |
+| `agent-api` | ✅ | Spring Boot REST API（15 个端点）+ Web 控制台（SPA，事件驱动架构） |
+| `agent-mcp` | ⬜ | MCP 集成预留（仅有 package-info.java） |
+| `business-exception-agent` | ✅ | 3 步诊断工作流 + ProjectManager + 结构化 DiagnosisReport |
+
+## 技术栈
+
+| 层 | 技术 |
+|------|------|
+| 语言 | Java 21（records、pattern matching） |
+| 框架 | Spring Boot 3.5.7 + Maven 多模块 |
+| LLM | OpenAI 兼容 API（DeepSeek / GPT-4o / 通义千问） |
+| 数据库 | MySQL 8.0（开发用内存，表结构已定义） |
+| 缓存 | Redis 7 |
+| 可观测 | Prometheus + Grafana + OpenTelemetry Collector |
+| 文档 | SpringDoc OpenAPI（Swagger UI） |
+
+## 项目结构
+
+```
+AgentOpsPlatform/
+├── pom.xml                          # Maven 父 POM，8 个子模块
+├── agent-api/                       # Spring Boot REST API + Web 控制台
+├── agent-runtime/                   # 模型调用客户端
+├── agent-tools/                     # 工具注册中心 + Git/Log 工具 + 日志源抽象
+├── agent-prompts/                   # Prompt 模板管理
+├── agent-workflow/                  # 轻量工作流引擎
+├── agent-memory/                    # 记忆存储抽象
+├── agent-mcp/                       # MCP 集成（占位）
+├── business-exception-agent/        # 领域诊断 Agent
+├── docker/                          # Docker Compose + MySQL 初始化
+├── docs/                            # 运行手册 + 开发模式评审
+├── openwiki/                        # OpenWiki 文档（当前页面）
+├── AGENTS.md                        # AI 编码 Agent 协作规则
+├── CLAUDE.md                        # Claude Code 专用指令
+├── ARCHITECTURE.md                  # 四层架构定义
+├── ROADMAP.md                       # 版本路线图
+├── TASKS.md                         # 活动任务清单（下一步做什么的唯一权威来源）
+├── CHANGELOG.md                     # 变更日志
+└── PROJECT_BOOTSTRAP.md             # 首次启动 Prompt
+```
+
+## 快速开始
+
+### 前置条件
+
+- JDK 21（`JAVA_HOME` 指向 JDK 21）
+- Maven 3.8+
+- LLM API Key（DeepSeek 推荐，国内可直接访问）
+
+### 1. 切换到 JDK 21
+
+```powershell
+# Windows（开发机默认可能是 JDK 17）
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+
+# 验证
+mvn -version
+# 应输出：Java version: 21.0.x
+```
+
+### 2. 构建项目
+
+```bash
+# 首次构建：安装所有模块到本地 Maven 仓库
+mvn install -DskipTests
+
+# 日常编译
+mvn clean compile
+
+# 运行测试（当前 24 个用例）
+mvn test
+```
+
+### 3. 启动应用
+
+```powershell
+# 设置 LLM API Key
+$env:AGENTOPS_LLM_API_KEY = "sk-xxxxxxxx"
+
+# 启动（端口 8088）
+mvn spring-boot:run -pl agent-api
+```
+
+### 4. 验证
+
+```bash
+# 健康检查
+curl http://localhost:8088/api/health
+
+# 测试诊断
+curl -X POST http://localhost:8088/api/diagnosis \
+  -H "Content-Type: application/json" \
+  -d '{"stackTrace": "java.lang.NullPointerException: ...\n\tat com.example.Service.method(Service.java:42)"}'
+
+# Web 控制台
+# 浏览器打开 http://localhost:8088/
+# Swagger UI: http://localhost:8088/swagger-ui.html
+```
+
+### 5. （可选）启动基础设施
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+# 启动 MySQL:3306, Redis:6379, Prometheus:9090, Grafana:3000, OTel:4317/4318
+```
 
 ## 接下来去哪
 
-- **[架构概览](architecture/overview.md)** — 四层架构、模块职责、技术选型、设计决策
-- **[开发工作流](development/workflow.md)** — AI 协作开发模型、任务系统、Prompt 文件、环境配置、提交规范
+| 页面 | 内容 |
+|------|------|
+| [架构概览](architecture/overview.md) | 四层架构、8 个 Maven 模块、基础设施、设计决策 |
+| [开发工作流](development/workflow.md) | AI 协作模型、任务系统、编码规范、测试指南 |
+| [REST API 与 Web 控制台](api/rest-api.md) | 全部 15 个端点、Web SPA 架构、OpenTelemetry 追踪 |
+| [业务异常诊断 Agent](domain/business-exception.md) | 诊断工作流、数据模型、工具系统、项目管理 |
 
 ## 核心参考文档
 
@@ -30,84 +137,10 @@ AgentOps Platform 是一个面向工程团队的**企业级 Java AI Agent 智能
 
 | # | 文件 | 用途 |
 |---|------|---------|
-| 1 | [`README.md`](../README.md) | 项目概览和 tech stack |
-| 2 | [`AGENTS.md`](../AGENTS.md) | AI 编码 Agent 规则和模块边界 |
-| 3 | [`CLAUDE.md`](../CLAUDE.md) | Claude Code 配置和开发约定 |
-| 4 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | 四层架构定义 |
-| 5 | [`ROADMAP.md`](../ROADMAP.md) | V0.1–V0.5 路线图 |
-| 6 | [`TASKS.md`](../TASKS.md) | 当前任务清单（下一步做什么的唯一权威来源） |
-| 7 | [`CHANGELOG.md`](../CHANGELOG.md) | 已完成工作日志 |
-
-### AI 协作 Prompt 文件
-
-以下为不同开发场景的角色专用 Prompt：
-
-| Prompt 文件 | 使用场景 |
-|-------------|-------------|
-| [`PROJECT_BOOTSTRAP.md`](../PROJECT_BOOTSTRAP.md) | 首次进入仓库 |
-| [`CONTINUE_DEVELOPMENT.md`](../CONTINUE_DEVELOPMENT.md) | 日常逐任务实现 |
-| [`ARCHITECT_PROMPT.md`](../ARCHITECT_PROMPT.md) | 结构/架构变更前 |
-| [`CODE_REVIEW_PROMPT.md`](../CODE_REVIEW_PROMPT.md) | 代码评审 |
-| [`BUGFIX_PROMPT.md`](../BUGFIX_PROMPT.md) | 缺陷修复 |
-| [`REFACTOR_PROMPT.md`](../REFACTOR_PROMPT.md) | 计划性重构 |
-| [`RELEASE_PROMPT.md`](../RELEASE_PROMPT.md) | 发布准备 |
-
-## 项目结构一览
-
-```
-AgentOpsPlatform/
-├── pom.xml                          # Maven 父 POM（Java 21, Spring Boot 3.5.7）
-├── agent-runtime/                   # ✅ 模型编排、推理循环、工具调用
-├── agent-api/                       # ✅ Spring Boot REST API 模块
-├── agent-tools/                     # ✅ Tool Registry 合约 + Git/Log 工具
-├── agent-memory/                    # ✅ Memory 接口 + InMemory 实现
-├── agent-workflow/                  # ✅ Workflow 引擎 + 顺序执行器
-├── agent-prompts/                   # ✅ Prompt Registry + classpath 加载
-├── agent-mcp/                       # MCP 集成（占位）
-├── business-exception-agent/        # ✅ 领域诊断 Agent + 3 步工作流
-├── docker/                          # Docker Compose 基础设施
-├── openwiki/                        # OpenWiki 文档
-├── AGENTS.md                        # AI 编码 Agent 协作规则
-├── CLAUDE.md                        # Claude Code 专用指令
-├── ARCHITECTURE.md                  # 架构定义
-├── ROADMAP.md                       # 版本路线图
-├── TASKS.md                         # 活动任务清单
-├── CHANGELOG.md                     # 变更日志
-└── PROJECT_BOOTSTRAP.md             # 项目启动 Prompt
-```
-
-## 快速开始：构建
-
-**前置条件：** JDK 21, Maven 3.9+
-
-```powershell
-# Windows 上 JDK 21 非默认时需先切换：
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-
-# 验证
-mvn -version
-
-# 编译全部模块
-mvn clean compile
-
-# 运行测试（当前 24 个用例）
-mvn test
-
-# 启动应用（需设置 LLM API Key）
-$env:AGENTOPS_LLM_API_KEY = "sk-xxx"
-mvn spring-boot:run -pl agent-api
-```
-
-启动后访问：
-- API 测试页面：`http://localhost:8088/`
-- Swagger 文档：`http://localhost:8088/swagger-ui.html`
-- Actuator 健康检查：`http://localhost:8088/actuator/health`
-
-## 核心设计规则
-
-1. **Agent 必须通过 Tool Registry 调用工具。** 领域 Agent 禁止直接访问数据库、Git、日志、指标或外部系统。
-2. **Prompt 存于 Java 代码之外。** Prompt 存储在 `agent-prompts` 的 classpath 资源中。
-3. **一次只做一个任务。** 只处理 `TASKS.md` 中第一个未完成的任务。
-4. **不使用重量级框架。** 直接使用 OpenAI Java SDK。除非有架构决策记录支撑，否则不引入 LangChain4j、Flowable 等。
-5. **接口优先的模块边界。** 所有模块边界（runtime、tools、workflow、memory）均先定义接口后实现。
+| 1 | `README.md` | 项目概览和 tech stack |
+| 2 | `AGENTS.md` | AI 编码 Agent 规则和模块边界 |
+| 3 | `CLAUDE.md` | Claude Code 配置和开发约定 |
+| 4 | `ARCHITECTURE.md` | 四层架构定义 |
+| 5 | `TASKS.md` | 当前任务清单（下一步做什么的唯一权威来源） |
+| 6 | `CHANGELOG.md` | 已完成工作日志 |
+| 7 | `docs/RUNBOOK.md` | 运行与运维手册（Docker、MySQL、部署） |
