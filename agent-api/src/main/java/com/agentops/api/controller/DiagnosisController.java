@@ -86,15 +86,15 @@ public class DiagnosisController {
     }
 
     /**
-     * 提交异常堆栈进行诊断（支持多源上下文注入和多轮对话）。
+     * 提交异常堆栈或日志内容进行诊断（支持堆栈模式 + 纯日志分析模式）。
      *
      * <pre>
      * POST /api/diagnosis
      * {
-     *   "stackTrace": "java.lang.NullPointerException: ...",
-     *   "conversationId": "uuid-xxx",   // 可选，用于多轮对话
-     *   "projectId": "uuid-xxx",         // 可选，启用多源上下文（环境+Git+日志）
-     *   "logContent": "原始日志文本..."   // 可选，用于提取日志上下文
+     *   "stackTrace": "java.lang.NullPointerException: ...",  // 可选（有 logContent 时）
+     *   "logContent": "原始日志文本...",   // 可选（有 stackTrace 时），纯日志模式时为主要输入
+     *   "conversationId": "uuid-xxx",     // 可选，用于多轮对话
+     *   "projectId": "uuid-xxx"           // 可选，启用多源上下文（环境+Git+日志）
      * }
      * </pre>
      */
@@ -105,89 +105,167 @@ public class DiagnosisController {
         String projectId = body.get("projectId");
         String logContent = body.get("logContent");
 
-        if (rawStackTrace == null || rawStackTrace.isBlank()) {
-            return Map.of("success", false, "error", "缺少 stackTrace 字段");
+        boolean hasStackTrace = rawStackTrace != null && !rawStackTrace.isBlank();
+        boolean hasLogContent = logContent != null && !logContent.isBlank();
+
+        // 至少需要提供堆栈或日志内容之一
+        if (!hasStackTrace && !hasLogContent) {
+            return Map.of("success", false, "error", "请提供异常堆栈（stackTrace）或日志内容（logContent）");
         }
+
+        // 如果没有堆栈但有日志内容，尝试自动提取堆栈
+        if (!hasStackTrace && hasLogContent) {
+            String extracted = LogExtractor.extractStackTrace(logContent);
+            if (extracted != null) {
+                rawStackTrace = extracted;
+                hasStackTrace = true;
+            }
+        }
+
+        // 判定模式：有堆栈 → 堆栈诊断；仅日志 → 纯日志分析
+        boolean isLogOnlyMode = !hasStackTrace;
 
         ToolRegistry activeToolRegistry = resolveToolRegistry(projectId);
 
         Span span = tracer.nextSpan().name("POST /api/diagnosis").start();
         try (var scope = tracer.withSpan(span)) {
+            span.tag("mode", isLogOnlyMode ? "log-analysis" : "stack-trace");
             span.tag("conversationId", conversationId != null ? conversationId : "new");
             if (projectId != null) span.tag("projectId", projectId);
 
-            // 1. 执行诊断工作流（解析堆栈 + 过滤项目代码）
-            WorkflowContext context = new SimpleWorkflowContext();
-            context.put(BusinessExceptionAgent.CTX_RAW_STACK_TRACE, rawStackTrace);
-            WorkflowContext result = workflowEngine.execute(
-                    BusinessExceptionAgent.WORKFLOW_NAME, context);
-            StackTrace parsed = result.get(BusinessExceptionAgent.CTX_PARSED_TRACE, StackTrace.class);
-            span.tag("exceptionType", parsed.exceptionType());
-
-            // 2. 构建多源诊断上下文（Phase 3 增强）
-            String enrichmentPrompt = "";
-            if (projectId != null) {
-                enrichmentPrompt = buildMultiSourceContext(projectId, parsed, logContent);
+            if (isLogOnlyMode) {
+                return executeLogOnlyDiagnosis(logContent, conversationId, projectId,
+                        activeToolRegistry, span);
+            } else {
+                return executeStackTraceDiagnosis(rawStackTrace, logContent, conversationId,
+                        projectId, activeToolRegistry, span);
             }
-
-            // 3. 渲染诊断 System Prompt（含多源上下文）
-            String systemPrompt = promptRegistry.render("diagnosis-system", Map.of(
-                    "exceptionType", parsed.exceptionType(),
-                    "exceptionMessage", parsed.message() != null ? parsed.message() : "无",
-                    "rawStackTrace", rawStackTrace
-            ));
-            systemPrompt = systemPrompt + enrichmentPrompt;
-
-            // 4. 构建消息列表（含历史对话）
-            List<ChatMessage> messages = new ArrayList<>();
-            messages.add(ChatMessage.system(systemPrompt));
-
-            if (conversationId != null && !conversationId.isBlank()) {
-                loadConversationHistory(conversationId, messages);
-            }
-
-            messages.add(ChatMessage.user("请对以上异常进行诊断分析，结合提供的所有上下文线索，只输出 JSON。"));
-
-            // 5. 调用 LLM（带工具）
-            Span llmSpan = tracer.nextSpan().name("llm.chat").start();
-            ChatResponse response;
-            try (var llmScope = tracer.withSpan(llmSpan)) {
-                llmSpan.tag("model", modelName);
-                ChatRequest request = new ChatRequest(
-                        messages,
-                        activeToolRegistry.listDefinitions(),
-                        modelName,
-                        0.2,
-                        2048,
-                        "json_object"
-                );
-                response = modelClient.chat(request);
-                llmSpan.tag("finishReason", response.finishReason() != null ? response.finishReason() : "unknown");
-            } finally {
-                llmSpan.end();
-            }
-
-            // 6. 解析 JSON 为 DiagnosisReport（注入 traceId）
-            String traceId = span.context().traceId();
-            DiagnosisReport report = parseDiagnosisReport(response.content(), parsed.exceptionType(), traceId);
-
-            // 7. 持久化诊断报告（Phase 3）
-            saveDiagnosisReport(projectId, report, rawStackTrace);
-
-            // 8. 保存对话记录
-            String cid = saveConversation(conversationId, messages,
-                    ChatMessage.assistant(response.content()));
-
-            span.tag("report.severity", report.severity());
-            span.tag("report.confidence", String.valueOf(report.confidence()));
-
-            return Map.of("success", true, "report", report, "conversationId", cid);
         } catch (Exception e) {
             span.tag("error", e.getMessage());
             return Map.of("success", false, "error", e.getMessage());
         } finally {
             span.end();
         }
+    }
+
+    // ========================================================================
+    // 堆栈诊断模式（原有流程）
+    // ========================================================================
+
+    private Map<String, Object> executeStackTraceDiagnosis(
+            String rawStackTrace, String logContent, String conversationId,
+            String projectId, ToolRegistry activeToolRegistry, Span span) {
+
+        // 1. 执行诊断工作流（解析堆栈 + 过滤项目代码）
+        WorkflowContext context = new SimpleWorkflowContext();
+        context.put(BusinessExceptionAgent.CTX_RAW_STACK_TRACE, rawStackTrace);
+        WorkflowContext result = workflowEngine.execute(
+                BusinessExceptionAgent.WORKFLOW_NAME, context);
+        StackTrace parsed = result.get(BusinessExceptionAgent.CTX_PARSED_TRACE, StackTrace.class);
+        span.tag("exceptionType", parsed.exceptionType());
+
+        // 2. 构建多源诊断上下文
+        String enrichmentPrompt = "";
+        if (projectId != null) {
+            enrichmentPrompt = buildMultiSourceContext(projectId, parsed, logContent);
+        }
+
+        // 3. 渲染诊断 System Prompt
+        String systemPrompt = promptRegistry.render("diagnosis-system", Map.of(
+                "exceptionType", parsed.exceptionType(),
+                "exceptionMessage", parsed.message() != null ? parsed.message() : "无",
+                "rawStackTrace", rawStackTrace
+        ));
+        systemPrompt = systemPrompt + enrichmentPrompt;
+
+        return finishDiagnosis(systemPrompt, conversationId, activeToolRegistry,
+                parsed.exceptionType(), span, projectId, rawStackTrace);
+    }
+
+    // ========================================================================
+    // 纯日志分析模式（v1.1 新增 — 无堆栈时的日志上下文诊断）
+    // ========================================================================
+
+    private Map<String, Object> executeLogOnlyDiagnosis(
+            String logContent, String conversationId, String projectId,
+            ToolRegistry activeToolRegistry, Span span) {
+
+        // 1. 分析日志模式（错误/警告统计、样本提取）
+        LogExtractor.LogAnalysis logAnalysis = LogExtractor.analyzeLogContent(logContent);
+
+        // 2. 构建多源上下文（环境 + Git，无堆栈帧的 blame 定位）
+        String enrichmentPrompt = "";
+        if (projectId != null) {
+            enrichmentPrompt = buildMultiSourceContextForLogOnly(projectId, logContent);
+        }
+
+        // 3. 渲染日志分析 System Prompt
+        String systemPrompt = promptRegistry.render("log-analysis-system", Map.of(
+                "logContent", logContent.length() > 8000
+                        ? logContent.substring(0, 8000) + "\n... (日志过长，已截断至 8000 字符)" : logContent,
+                "logAnalysis", logAnalysis.toPromptText()
+        ));
+        systemPrompt = systemPrompt + enrichmentPrompt;
+
+        span.tag("logTotalLines", String.valueOf(logAnalysis.totalLines()));
+        span.tag("logErrorCount", String.valueOf(logAnalysis.errorCount()));
+
+        return finishDiagnosis(systemPrompt, conversationId, activeToolRegistry,
+                "LogAnalysis", span, projectId, logContent);
+    }
+
+    // ========================================================================
+    // 公共：调用 LLM + 解析 + 持久化 + 保存对话
+    // ========================================================================
+
+    private Map<String, Object> finishDiagnosis(
+            String systemPrompt, String conversationId, ToolRegistry activeToolRegistry,
+            String exceptionType, Span span, String projectId, String rawTrace) {
+
+        // 构建消息列表（含历史对话）
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(systemPrompt));
+
+        if (conversationId != null && !conversationId.isBlank()) {
+            loadConversationHistory(conversationId, messages);
+        }
+
+        messages.add(ChatMessage.user("请对以上内容进行诊断分析，结合提供的所有上下文线索，只输出 JSON。"));
+
+        // 调用 LLM（带工具）
+        Span llmSpan = tracer.nextSpan().name("llm.chat").start();
+        ChatResponse response;
+        try (var llmScope = tracer.withSpan(llmSpan)) {
+            llmSpan.tag("model", modelName);
+            ChatRequest request = new ChatRequest(
+                    messages,
+                    activeToolRegistry.listDefinitions(),
+                    modelName,
+                    0.2,
+                    2048,
+                    "json_object"
+            );
+            response = modelClient.chat(request);
+            llmSpan.tag("finishReason", response.finishReason() != null ? response.finishReason() : "unknown");
+        } finally {
+            llmSpan.end();
+        }
+
+        // 解析 JSON 为 DiagnosisReport
+        String traceId = span.context().traceId();
+        DiagnosisReport report = parseDiagnosisReport(response.content(), exceptionType, traceId);
+
+        // 持久化诊断报告
+        saveDiagnosisReport(projectId, report, rawTrace);
+
+        // 保存对话记录
+        String cid = saveConversation(conversationId, messages,
+                ChatMessage.assistant(response.content()));
+
+        span.tag("report.severity", report.severity());
+        span.tag("report.confidence", String.valueOf(report.confidence()));
+
+        return Map.of("success", true, "report", report, "conversationId", cid);
     }
 
     /**
@@ -286,13 +364,11 @@ public class DiagnosisController {
     }
 
     // ========================================================================
-    // 多源上下文构建 (Phase 3)
+    // 多源上下文构建 (Phase 3 + v1.1 log-only)
     // ========================================================================
 
     /**
-     * 为诊断构建多源上下文注入文本。
-     *
-     * <p>收集：项目信息 + 运行环境 + Git 上下文（含 Blame）+ 日志上下文。
+     * 为堆栈诊断构建多源上下文注入文本。
      */
     private String buildMultiSourceContext(String projectId, StackTrace parsed, String logContent) {
         ProjectEntity project = projectManager.getProject(projectId).orElse(null);
@@ -302,32 +378,72 @@ public class DiagnosisController {
         EnvironmentInfo env = EnvironmentCollector.collect();
 
         // Git 上下文（含项目代码帧的 Blame）
-        GitContext gitCtx = null;
-        String repoPath = project.getGitRepoLocalPath();
-        if (repoPath != null && !repoPath.isBlank()) {
-            GitContextProvider gitProvider = new GitContextProvider(repoPath);
-            List<StackTraceFrame> projectFrames = parsed.frames().stream()
-                    .filter(StackTraceFrame::isProjectCode)
-                    .toList();
-            List<GitContextProvider.FileLine> blameTargets = projectFrames.stream()
-                    .filter(f -> f.fileName() != null && f.lineNumber() > 0)
-                    .map(f -> GitContextProvider.FileLine.of(f.fileName(), f.lineNumber()))
-                    .toList();
-            gitCtx = gitProvider.collect(blameTargets);
-        }
+        GitContext gitCtx = collectGitContext(project, parsed != null ? parsed.frames() : List.of());
 
-        // 日志上下文（从提供的 logContent 提取）
+        // 日志上下文
         String logCtx = null;
-        if (logContent != null && !logContent.isBlank()) {
+        if (logContent != null && !logContent.isBlank() && parsed != null) {
             logCtx = LogExtractor.extractLogContext(logContent, parsed.rawText());
         }
 
-        // 组装 DiagnosisContext 并生成 Prompt 注入文本
         DiagnosisContext ctx = new DiagnosisContext(
                 project.getId(), project.getName(), project.getDescription(),
-                parsed.rawText(), parsed, logCtx, gitCtx, env);
+                parsed != null ? parsed.rawText() : logContent, parsed, logCtx, gitCtx, env);
 
         return "\n\n" + ctx.toPromptText();
+    }
+
+    /**
+     * 为纯日志分析模式构建多源上下文（无堆栈帧，不提取 blame 行号）。
+     */
+    private String buildMultiSourceContextForLogOnly(String projectId, String logContent) {
+        ProjectEntity project = projectManager.getProject(projectId).orElse(null);
+        if (project == null) return "";
+
+        EnvironmentInfo env = EnvironmentCollector.collect();
+
+        // Git 上下文（无 blame 目标，仅分支/最近提交）
+        GitContext gitCtx = collectGitContext(project, List.of());
+
+        // 日志上下文：取 logContent 首尾各 30 行作为样本
+        String logCtx = extractLogSample(logContent, 30);
+
+        DiagnosisContext ctx = new DiagnosisContext(
+                project.getId(), project.getName(), project.getDescription(),
+                logContent, null, logCtx, gitCtx, env);
+
+        return "\n\n" + ctx.toPromptText();
+    }
+
+    /** 提取日志首尾样本行 */
+    private String extractLogSample(String logContent, int sampleLines) {
+        if (logContent == null || logContent.isBlank()) return null;
+        String[] lines = logContent.split("\\r?\\n");
+        if (lines.length <= sampleLines * 2) return logContent;
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < sampleLines && i < lines.length; i++) {
+            sb.append(lines[i]).append("\n");
+        }
+        sb.append("... (省略 ").append(lines.length - sampleLines * 2).append(" 行) ...\n");
+        for (int i = Math.max(sampleLines, lines.length - sampleLines); i < lines.length; i++) {
+            sb.append(lines[i]).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    /** 收集 Git 上下文（含可选的 Blame 目标列表） */
+    private GitContext collectGitContext(ProjectEntity project,
+                                          List<StackTraceFrame> projectFrames) {
+        String repoPath = project.getGitRepoLocalPath();
+        if (repoPath == null || repoPath.isBlank()) return null;
+
+        GitContextProvider gitProvider = new GitContextProvider(repoPath);
+        List<GitContextProvider.FileLine> blameTargets = projectFrames.stream()
+                .filter(f -> f.fileName() != null && f.lineNumber() > 0)
+                .map(f -> GitContextProvider.FileLine.of(f.fileName(), f.lineNumber()))
+                .toList();
+        return gitProvider.collect(blameTargets);
     }
 
     // ========================================================================

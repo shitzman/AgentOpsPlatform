@@ -34,6 +34,14 @@ public final class LogExtractor {
     private static final int CONTEXT_BEFORE_LINES = 3;
     private static final int CONTEXT_AFTER_LINES = 3;
 
+    /** 匹配 ERROR / WARN 级别日志行 */
+    private static final Pattern ERROR_WARN_LINE = Pattern.compile(
+            "(?i)(ERROR|WARN|FATAL|SEVERE|CRITICAL)\\b");
+
+    /** 匹配带时间戳的一般日志行（用于行数统计） */
+    private static final Pattern LOG_LINE = Pattern.compile(
+            "^(?:\\d{4}[-/]\\d{2}[-/]\\d{2}[\\sT]\\d{2}:\\d{2}:\\d{2})");
+
     private LogExtractor() {}
 
     /**
@@ -163,5 +171,114 @@ public final class LogExtractor {
         }
 
         return ctx.toString().trim();
+    }
+
+    /**
+     * 分析日志内容模式 — 当没有异常堆栈时，提取关键信息供 LLM 分析。
+     *
+     * @param logContent 原始日志内容
+     * @return 日志分析摘要（错误/警告行、统计信息、代表性样本）
+     */
+    public static LogAnalysis analyzeLogContent(String logContent) {
+        if (logContent == null || logContent.isBlank()) {
+            return new LogAnalysis(0, 0, 0, 0, List.of(), List.of(), "");
+        }
+
+        String[] lines = logContent.split("\\r?\\n");
+        int totalLines = lines.length;
+        int errorCount = 0;
+        int warnCount = 0;
+        int logLineCount = 0;
+        List<String> errorLines = new ArrayList<>();
+        List<String> warnLines = new ArrayList<>();
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) continue;
+
+            if (LOG_LINE.matcher(trimmed).find()) {
+                logLineCount++;
+            }
+
+            Matcher m = ERROR_WARN_LINE.matcher(trimmed);
+            if (m.find()) {
+                String level = m.group(1).toUpperCase();
+                if (level.equals("ERROR") || level.equals("FATAL") || level.equals("SEVERE") || level.equals("CRITICAL")) {
+                    errorCount++;
+                    if (errorLines.size() < 20) {  // 最多保留 20 条样本
+                        errorLines.add(trimmed.length() > 300 ? trimmed.substring(0, 300) + "..." : trimmed);
+                    }
+                } else if (level.equals("WARN")) {
+                    warnCount++;
+                    if (warnLines.size() < 10) {
+                        warnLines.add(trimmed.length() > 300 ? trimmed.substring(0, 300) + "..." : trimmed);
+                    }
+                }
+            }
+        }
+
+        // 构建摘要文本：取首尾各 20 行作为上下文样本
+        StringBuilder sample = new StringBuilder();
+        int sampleSize = Math.min(20, totalLines);
+        for (int i = 0; i < sampleSize && i < totalLines; i++) {
+            if (!lines[i].trim().isEmpty()) {
+                sample.append(lines[i]).append("\n");
+            }
+        }
+        if (totalLines > sampleSize * 2) {
+            sample.append("... (省略 ").append(totalLines - sampleSize * 2).append(" 行) ...\n");
+        }
+        for (int i = Math.max(sampleSize, totalLines - sampleSize); i < totalLines; i++) {
+            if (!lines[i].trim().isEmpty()) {
+                sample.append(lines[i]).append("\n");
+            }
+        }
+
+        return new LogAnalysis(totalLines, errorCount, warnCount, logLineCount,
+                List.copyOf(errorLines), List.copyOf(warnLines), sample.toString().trim());
+    }
+
+    /**
+     * 日志分析结果 — 无堆栈时的日志模式摘要。
+     */
+    public record LogAnalysis(
+            int totalLines,
+            int errorCount,
+            int warnCount,
+            int logLineCount,
+            java.util.List<String> errorSamples,
+            java.util.List<String> warnSamples,
+            String contextSample) {
+
+        /** 生成可注入 LLM Prompt 的 Markdown 文本 */
+        public String toPromptText() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("## 日志内容分析\n\n");
+            sb.append("- 总行数: ").append(totalLines).append("\n");
+            sb.append("- 错误行: ").append(errorCount).append("\n");
+            sb.append("- 警告行: ").append(warnCount).append("\n");
+            sb.append("- 标准日志行: ").append(logLineCount).append("\n\n");
+
+            if (!errorSamples.isEmpty()) {
+                sb.append("### 错误行样本\n```\n");
+                for (String e : errorSamples) {
+                    sb.append(e).append("\n");
+                }
+                sb.append("```\n\n");
+            }
+
+            if (!warnSamples.isEmpty()) {
+                sb.append("### 警告行样本\n```\n");
+                for (String w : warnSamples) {
+                    sb.append(w).append("\n");
+                }
+                sb.append("```\n\n");
+            }
+
+            sb.append("### 日志样本（首尾各 20 行）\n```\n");
+            sb.append(contextSample).append("\n```\n");
+
+            return sb.toString();
+        }
     }
 }

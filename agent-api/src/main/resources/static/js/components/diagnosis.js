@@ -29,7 +29,7 @@ const DiagnosisTab = {
       <div class="row">
         <div class="col">
           <div class="card">
-            <div class="card-header"><h3 class="card-title">堆栈输入</h3></div>
+            <div class="card-header"><h3 class="card-title">堆栈 / 日志输入</h3></div>
             <div class="form-group">
               <label class="form-label">选择项目（可选）</label>
               <select class="form-select" id="diagProjectSelect">
@@ -42,17 +42,21 @@ const DiagnosisTab = {
               <div class="preset-list" id="presetList"></div>
             </div>
             <div class="form-group">
+              <label class="form-label">
+                异常堆栈（可选 —
+                <span style="font-weight:normal;color:var(--color-text-secondary)">也可仅提交下方日志内容进行纯日志分析</span>）
+              </label>
               <textarea class="form-textarea" id="diagStackTrace" rows="8"
-                placeholder="粘贴 Java 异常堆栈..."></textarea>
+                placeholder="粘贴 Java 异常堆栈...（如果日志中已有堆栈，可直接粘贴到下方日志输入框）"></textarea>
             </div>
             <div class="form-group">
               <label class="form-label">
-                关联日志内容（可选 —
-                <span style="font-weight:normal;color:var(--color-text-secondary)">粘贴异常发生时的日志上下文，自动提取关联行</span>）
+                日志内容（可选 —
+                <span style="font-weight:normal;color:var(--color-text-secondary)">纯日志分析模式：系统自动识别 ERROR/WARN 模式进行分析</span>）
               </label>
-              <textarea class="form-textarea" id="diagLogContent" rows="4"
+              <textarea class="form-textarea" id="diagLogContent" rows="8"
                 style="font-size:12px"
-                placeholder="粘贴包含异常堆栈的原始日志...（可选）"></textarea>
+                placeholder="粘贴应用日志...&#10;系统会自动提取堆栈（如果有），或进行纯日志模式分析（无堆栈时）"></textarea>
             </div>
             <button class="btn btn-primary" id="diagSubmit">提交诊断</button>
             <span id="diagLoading" style="display:none;margin-left:12px">
@@ -143,18 +147,23 @@ const DiagnosisTab = {
 
   async _submitDiagnosis() {
     const stackTrace = document.getElementById('diagStackTrace').value.trim();
-    if (!stackTrace) { Utils.notify('请输入异常堆栈', 'error'); return; }
-
-    const projectId = document.getElementById('diagProjectSelect')?.value || undefined;
     const logContent = document.getElementById('diagLogContent')?.value.trim() || undefined;
+    const projectId = document.getElementById('diagProjectSelect')?.value || undefined;
+
+    // 至少需要提供堆栈或日志内容之一
+    if (!stackTrace && !logContent) {
+      Utils.notify('请输入异常堆栈或日志内容（至少提供一项）', 'error'); return;
+    }
+
     const loading = document.getElementById('diagLoading');
     loading.style.display = 'inline';
 
     try {
-      const body = { stackTrace };
+      const body = {};
+      if (stackTrace) body.stackTrace = stackTrace;
+      if (logContent) body.logContent = logContent;
       if (this._conversationId) body.conversationId = this._conversationId;
       if (projectId) body.projectId = projectId;
-      if (logContent) body.logContent = logContent;
 
       const res = await Api.diagnose(body);
       if (!res.success) { Utils.notify(res.error, 'error'); return; }
