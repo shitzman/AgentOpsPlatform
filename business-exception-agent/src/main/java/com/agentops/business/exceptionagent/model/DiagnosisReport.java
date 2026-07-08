@@ -14,16 +14,21 @@ import java.util.List;
  *   <li>作为 REST API 响应的序列化对象（Jackson 自动序列化）</li>
  * </ol>
  *
- * @param summary          异常摘要（一句话描述发生了什么）
- * @param exceptionType    异常类型全名
- * @param severity         严重级别：critical / high / medium / low
- * @param likelyRootCause  最可能的根因分析
- * @param impactScope      影响范围（涉及哪些模块、服务或用户）
- * @param urgency          紧急程度：立即修复 / 计划修复 / 低优先级
- * @param relatedModules   可能相关的模块列表
- * @param recommendations  修复建议列表（按优先级排列）
- * @param confidence       诊断置信度 (0.0–1.0)
- * @param traceId          OpenTelemetry Trace ID（V0.5），用于关联分布式追踪数据
+ * <p>V1.0 Phase 3 新增多源关联字段：gitBlameHints / environmentFactors / logContextSummary
+ *
+ * @param summary             异常摘要（一句话描述发生了什么）
+ * @param exceptionType       异常类型全名
+ * @param severity            严重级别：critical / high / medium / low
+ * @param likelyRootCause     最可能的根因分析
+ * @param impactScope         影响范围（涉及哪些模块、服务或用户）
+ * @param urgency             紧急程度：立即修复 / 计划修复 / 低优先级
+ * @param relatedModules      可能相关的模块列表
+ * @param recommendations     修复建议列表（按优先级排列）
+ * @param confidence          诊断置信度 (0.0–1.0)
+ * @param traceId             OpenTelemetry Trace ID（V0.5），用于关联分布式追踪数据
+ * @param gitBlameHints       可疑的 Git 提交线索列表（V1.0 Phase 3）
+ * @param environmentFactors  可能相关的环境因素列表（V1.0 Phase 3）
+ * @param logContextSummary   关联日志上下文的关键发现摘要（V1.0 Phase 3）
  */
 public record DiagnosisReport(
         String summary,
@@ -35,7 +40,10 @@ public record DiagnosisReport(
         List<String> relatedModules,
         List<String> recommendations,
         double confidence,
-        String traceId) {
+        String traceId,
+        List<String> gitBlameHints,
+        List<String> environmentFactors,
+        String logContextSummary) {
 
     public DiagnosisReport {
         if (summary == null || summary.isBlank()) {
@@ -53,6 +61,12 @@ public record DiagnosisReport(
         recommendations = recommendations != null
                 ? Collections.unmodifiableList(recommendations)
                 : Collections.emptyList();
-        // traceId 为可选字段，允许 null（LLM 不生成此字段）
+        gitBlameHints = gitBlameHints != null
+                ? Collections.unmodifiableList(gitBlameHints)
+                : Collections.emptyList();
+        environmentFactors = environmentFactors != null
+                ? Collections.unmodifiableList(environmentFactors)
+                : Collections.emptyList();
+        // traceId 和 logContextSummary 为可选字段，允许 null
     }
 }

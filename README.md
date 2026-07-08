@@ -8,11 +8,12 @@
 
 | 里程碑 | 状态 | 说明 |
 |--------|:----:|------|
-| V0.1 平台基础 | ✅ 完成 | 多模块骨架、全部接口定义、Docker Compose |
-| V0.2 日志诊断 MVP | ✅ 完成 | 端到端链路：POST 堆栈 → LLM 诊断 → JSON 报告 |
-| V0.3 仓库智能 | 🔲 待开始 | Git Tool、仓库搜索、Blame 分析 |
-| V0.4 可观测性 | 🔲 待开始 | Prometheus Tool、链路追踪关联 |
-| V0.5 辅助修复 | 🔲 待开始 | Patch 生成、PR 创建 |
+| V0.5 项目配置 + 可观测性 | ✅ 完成 | Project CRUD + 日志源 + Web 控制台 + OpenTelemetry |
+| V1.0 Phase 1 持久化 | ✅ 完成 | MySQL + MyBatis-Plus + agent-repository 模块 |
+| V1.0 Phase 2 数据采集 | ✅ 完成 | 环境采集 + Git 上下文 + 日志提取 |
+| V1.0 Phase 3 多源诊断 | ✅ 完成 | 多源上下文注入 + 诊断报告持久化 + 历史查询 |
+| V2.0 监控告警 | 🔲 待开始 | Prometheus Tool + 指标大盘 + 告警通知 |
+| V3.0 自愈修复 | 🔲 待开始 | Patch 生成 + PR 创建 |
 
 ## 架构概览
 
@@ -26,10 +27,10 @@
 ├────────────┬──────────┬──────────┬────────────────┤
 │   runtime  │ workflow │ prompts  │    tools       │
 │ 模型编排   │ 工作流   │ 模板管理 │  工具注册中心   │
-├────────────┴──────────┴──────────┼────────────────┤
-│            agent-memory          │   agent-mcp    │
-│          记忆存储抽象             │  MCP 集成面    │
-└──────────────────────────────────┴────────────────┘
+├────────────┼──────────┴──────────┼────────────────┤
+│  memory    │    repository        │   agent-mcp    │
+│ 记忆抽象   │ MySQL+MyBatis-Plus   │  MCP 集成面    │
+└────────────┴──────────────────────┴────────────────┘
 ```
 
 ## 模块说明
@@ -55,6 +56,7 @@
 |------|------|--------|------|
 | **agent-api** | REST API 交付层 | `DiagnosisController` / `AgentOpsConfig` | `POST /api/diagnosis` + `GET /api/health` |
 | **business-exception-agent** | 领域 Agent | `BusinessExceptionAgent` / `StackTrace` / `DiagnosisReport` | 3 步诊断工作流：解析 → 过滤 → LLM 生成报告 |
+| **agent-repository** | 数据持久化 | `ProjectEntity` / `MySqlMemoryStore` / `MySqlProjectManager` | MyBatis-Plus 实体 + Mapper |
 | **agent-mcp** | MCP 集成 | 待开发 | Model Context Protocol 集成面 |
 
 ### 设计目的

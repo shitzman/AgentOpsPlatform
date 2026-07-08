@@ -77,7 +77,8 @@ public class BusinessExceptionAgent {
         return new DiagnosisReport(
                 "诊断工作流骨架已执行（V0.2 接入 LLM）",
                 "unknown", "medium", "待 LLM 分析",
-                "未知", "计划修复", List.of(), List.of(), 0.0, null);
+                "未知", "计划修复", List.of(), List.of(), 0.0, null,
+                List.of(), List.of(), null);
     }
 
     /**
@@ -213,7 +214,8 @@ public class BusinessExceptionAgent {
             DiagnosisReport report = new DiagnosisReport(
                     summary, trace.exceptionType(), "medium",
                     "待 LLM 分析", "未知", "计划修复",
-                    List.of(), List.of(), 0.0, null);
+                    List.of(), List.of(), 0.0, null,
+                    List.of(), List.of(), null);
             context.put(CTX_DIAGNOSIS_REPORT, report);
             return context;
         };

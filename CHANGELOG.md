@@ -4,6 +4,36 @@ All notable changes to AgentOps Platform will be documented in this file.
 
 ## V1.0 (in progress)
 
+### Phase 3 — 多源关联诊断增强
+
+#### Changed — 诊断模型增强
+
+- `DiagnosisReport` 新增 3 个字段（V1.0 Phase 3）：
+  - `gitBlameHints: List<String>` — 可疑的 Git 提交线索
+  - `environmentFactors: List<String>` — 可能相关的环境因素
+  - `logContextSummary: String` — 关联日志上下文的关键发现摘要
+
+#### Changed — System Prompt 重写
+
+- `diagnosis-system.txt`：新增 3 个诊断维度（Git Blame 线索 / 环境因素 / 日志上下文摘要）
+- JSON Schema 输出格式新增对应的 3 个字段
+- 引导 LLM 利用 Git Blame、环境信息、日志上下文进行交叉验证
+
+#### Added — 多源上下文注入
+
+- `POST /api/diagnosis` 诊断时自动注入多源上下文：
+  - 项目信息（名称、描述）
+  - 运行环境（Java 版本、OS、JVM 参数、内存）
+  - Git 上下文（分支、最近提交、项目代码帧的 Git Blame）
+  - 日志上下文（从可选 `logContent` 字段提取的关联日志行）
+- 新增 `DiagnosisController.buildMultiSourceContext()` 私有方法进行上下文收集
+
+#### Added — 诊断持久化
+
+- 每次诊断自动将报告保存到 `diagnosis_reports` 表（MySQL/H2）
+- `GET /api/diagnosis?projectId=X&page=0&size=20` — 诊断历史分页查询
+- `DiagnosisController` 新增 `DiagnosisReportMapper` 依赖
+
 ### Phase 2 — 数据采集增强
 
 #### Added — 模型层
