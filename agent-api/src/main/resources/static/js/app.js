@@ -68,8 +68,9 @@ const App = {
         EventBus.emit('projects-changed', { projects: projRes.projects });
       } else {
         console.error('加载项目列表失败:', projRes.error);
+        Utils.notify('加载项目列表失败: ' + (projRes.error || '未知错误'), 'error');
       }
-    } catch (e) { console.error('加载项目列表异常:', e); }
+    } catch (e) { console.error('加载项目列表异常:', e); Utils.notify('加载项目列表失败: ' + e.message, 'error'); }
 
     // 健康检查
     this.checkHealth();

@@ -11,6 +11,14 @@ spring:
     name: agentops-platform
   profiles:
     active: local
+  # 静态资源配置 — 开发环境禁用缓存，避免 JS/CSS 更新后浏览器不刷新
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+      chain:
+        cache: false
   # 默认数据源（H2 内存数据库，开发 profile 使用）
   datasource:
     url: jdbc:h2:mem:agentops;DB_CLOSE_DELAY=-1;MODE=MySQL

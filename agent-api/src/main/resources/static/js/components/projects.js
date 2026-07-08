@@ -36,6 +36,9 @@ const ProjectsTab = {
       if (res.success) {
         AppState.projects = res.projects;
         EventBus.emit('projects-changed', { projects: res.projects });
+      } else {
+        console.error('[ProjectsTab] 加载项目列表失败:', res.error);
+        Utils.notify('加载项目列表失败: ' + (res.error || '未知错误'), 'error');
       }
     } catch (e) { Utils.notify('加载项目列表失败: ' + e.message, 'error'); }
   },
