@@ -2,6 +2,7 @@ package com.agentops.repository.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.time.LocalDateTime;
 
@@ -23,7 +24,9 @@ public class ProjectEntity {
     private String enabledTools;
     /** JSON 数组字符串，如 ["uuid-1","uuid-2"] */
     private String logSourceIds;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updatedAt;
 
     public ProjectEntity() {}

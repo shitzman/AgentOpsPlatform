@@ -2,6 +2,7 @@ package com.agentops.repository.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.time.LocalDateTime;
 
@@ -29,6 +30,7 @@ public class DiagnosisReportEntity {
     private String urgency;
     private String traceId;
     private String rawTrace;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
     public DiagnosisReportEntity() {}

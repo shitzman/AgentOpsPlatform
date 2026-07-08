@@ -40,11 +40,11 @@ const App = {
       btn.addEventListener('click', () => TabManager.switch(btn.dataset.tab));
     });
 
-    // 初始化组件
-    DiagnosisTab.init(document.getElementById('panel-diagnosis'));
-    ProjectsTab.init(document.getElementById('panel-projects'));
-    LogSourcesTab.init(document.getElementById('panel-logsources'));
-    HistoryTab.init(document.getElementById('panel-history'));
+    // 初始化组件（异常隔离：单个组件失败不影响其他组件和后续数据加载）
+    try { DiagnosisTab.init(document.getElementById('panel-diagnosis')); } catch (e) { console.error('DiagnosisTab 初始化失败:', e); }
+    try { ProjectsTab.init(document.getElementById('panel-projects')); } catch (e) { console.error('ProjectsTab 初始化失败:', e); }
+    try { LogSourcesTab.init(document.getElementById('panel-logsources')); } catch (e) { console.error('LogSourcesTab 初始化失败:', e); }
+    try { HistoryTab.init(document.getElementById('panel-history')); } catch (e) { console.error('HistoryTab 初始化失败:', e); }
 
     // 全局状态同步
     EventBus.on('projects-changed', ({ projects }) => {
@@ -59,15 +59,17 @@ const App = {
     try {
       const toolRes = await Api.getAvailableTools();
       if (toolRes.success) AppState.tools = toolRes.tools;
-    } catch (e) { /* 静默失败 */ }
+    } catch (e) { console.error('加载工具列表失败:', e); }
 
     try {
       const projRes = await Api.getProjects();
       if (projRes.success) {
         AppState.projects = projRes.projects;
         EventBus.emit('projects-changed', { projects: projRes.projects });
+      } else {
+        console.error('加载项目列表失败:', projRes.error);
       }
-    } catch (e) { /* 静默失败 */ }
+    } catch (e) { console.error('加载项目列表异常:', e); }
 
     // 健康检查
     this.checkHealth();

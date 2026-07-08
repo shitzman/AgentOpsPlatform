@@ -2,6 +2,7 @@ package com.agentops.repository.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.time.LocalDateTime;
 
@@ -20,6 +21,7 @@ public class MemoryEntryEntity {
     private String content;
     /** JSON 格式元数据 */
     private String metadata;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
     public MemoryEntryEntity() {}

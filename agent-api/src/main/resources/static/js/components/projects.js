@@ -42,14 +42,15 @@ const ProjectsTab = {
 
   _renderProjectList(projects) {
     const grid = document.getElementById('projGrid');
-    if (!grid) return;
+    if (!grid) { console.error('projGrid 元素不存在'); return; }
 
     if (!projects || projects.length === 0) {
       grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📁</div><p>暂无检测项目</p></div>';
       return;
     }
 
-    grid.innerHTML = projects.map(p => Utils.html`
+    try {
+      grid.innerHTML = projects.map(p => Utils.html`
       <div class="project-card">
         <div class="project-card-header">
           <div>
@@ -89,6 +90,10 @@ const ProjectsTab = {
         if (project) this._confirmDelete(project);
       };
     });
+    } catch (e) {
+      console.error('渲染项目列表失败:', e);
+      grid.innerHTML = '<div class="empty-state"><p style="color:var(--color-danger)">渲染失败，请刷新页面</p></div>';
+    }
   },
 
   _showForm(existing) {

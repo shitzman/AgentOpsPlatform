@@ -3,6 +3,7 @@ package com.agentops.repository.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.time.LocalDateTime;
 
@@ -23,6 +24,7 @@ public class ConversationEntity {
     private String role;
     /** 消息内容（JSON 序列化的 ChatMessage 或纯文本） */
     private String content;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
     public ConversationEntity() {}

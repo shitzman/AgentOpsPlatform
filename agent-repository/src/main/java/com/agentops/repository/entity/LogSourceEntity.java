@@ -2,6 +2,7 @@ package com.agentops.repository.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.time.LocalDateTime;
 
@@ -23,6 +24,7 @@ public class LogSourceEntity {
     /** JSON 字符串，如 {"filePath": "/var/log/app.log"} */
     private String properties;
     private Boolean enabled;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
     public LogSourceEntity() {}
