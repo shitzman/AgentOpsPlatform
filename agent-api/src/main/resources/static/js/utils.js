@@ -31,8 +31,11 @@ const Utils = {
 
     document.getElementById('modalClose').onclick = () => this.closeModal();
     document.getElementById('modalCancel').onclick = () => this.closeModal();
-    document.getElementById('modalConfirm').onclick = () => {
-      if (onConfirm) onConfirm();
+    document.getElementById('modalConfirm').onclick = async () => {
+      if (onConfirm) {
+        try { await onConfirm(); }
+        catch (e) { console.error('Modal callback error:', e); }
+      }
       this.closeModal();
     };
   },

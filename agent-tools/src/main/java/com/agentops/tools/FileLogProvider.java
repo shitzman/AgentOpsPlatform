@@ -74,6 +74,29 @@ public class FileLogProvider implements LogProvider {
     }
 
     @Override
+    public ToolResult test(LogSourceConfig config) {
+        String filePath = config.property("filePath", "");
+        if (filePath.isBlank()) {
+            return ToolResult.failure("日志文件路径未配置（filePath 为空）");
+        }
+
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path)) {
+            return ToolResult.failure("日志文件不存在: " + filePath);
+        }
+        if (!Files.isReadable(path)) {
+            return ToolResult.failure("日志文件不可读: " + filePath);
+        }
+
+        try {
+            long size = Files.size(path);
+            return ToolResult.success("文件可读（" + filePath + "，" + size + " 字节）");
+        } catch (IOException e) {
+            return ToolResult.failure("读取文件信息失败: " + e.getMessage());
+        }
+    }
+
+    @Override
     public LogSourceType supportedType() {
         return LogSourceType.FILE_PATH;
     }

@@ -4,7 +4,7 @@
    ================================================================ */
 
 const AppState = {
-  currentTab: 'diagnosis',
+  currentTab: 'workbench',
   selectedProjectId: null,
   projects: [],
   tools: []
@@ -41,6 +41,7 @@ const App = {
     });
 
     // 初始化组件（异常隔离：单个组件失败不影响其他组件和后续数据加载）
+    try { WorkbenchTab.init(document.getElementById('panel-workbench')); } catch (e) { console.error('WorkbenchTab 初始化失败:', e); }
     try { DiagnosisTab.init(document.getElementById('panel-diagnosis')); } catch (e) { console.error('DiagnosisTab 初始化失败:', e); }
     try { ProjectsTab.init(document.getElementById('panel-projects')); } catch (e) { console.error('ProjectsTab 初始化失败:', e); }
     try { LogSourcesTab.init(document.getElementById('panel-logsources')); } catch (e) { console.error('LogSourcesTab 初始化失败:', e); }

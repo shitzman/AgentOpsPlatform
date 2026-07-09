@@ -45,13 +45,17 @@ public class AgentOpsConfig {
     ToolRegistry toolRegistry() {
         InMemoryToolRegistry registry = new InMemoryToolRegistry();
 
-        // 注册 Git 工具（log / blame / show）
+        // 源码阅读工具（诊断核心工具 — 读取源码理解代码逻辑）
+        SourceCodeTool sourceCodeTool = new SourceCodeTool(gitRepoPath);
+        registry.register(SourceCodeTool.definition(), sourceCodeTool.executor());
+
+        // Git 工具（log / blame / show — 辅助定位最近变更）
         GitTool git = new GitTool(gitRepoPath);
         registry.register(GitTool.logDefinition(), git.logExecutor());
         registry.register(GitTool.blameDefinition(), git.blameExecutor());
         registry.register(GitTool.showDefinition(), git.showExecutor());
 
-        // 注册日志搜索工具（V0.4 默认实现，V1 支持项目级 LogProvider 替换）
+        // 日志搜索工具（V0.4 默认实现，V1 支持项目级 LogProvider 替换）
         LogTool logTool = new LogTool();
         registry.register(LogTool.definition(), logTool.executor());
 

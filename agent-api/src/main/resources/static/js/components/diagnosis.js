@@ -255,6 +255,16 @@ const DiagnosisTab = {
         </div>`;
     }
 
+    // 引导性追问（V1.4）— 信息不足时引导用户补充
+    if (report.followUpQuestions && report.followUpQuestions.length > 0) {
+      html += Utils.html`
+        <div class="result-section result-section-highlight">
+          <h4>❓ 需要更多信息</h4>
+          <p style="font-size:13px;margin-bottom:8px">当前信息不足以完全确定根因，请补充以下信息以获得更精确的诊断：</p>
+          <ul>${report.followUpQuestions.map(q => `<li>${Utils.escapeHtml(q)}</li>`).join('')}</ul>
+        </div>`;
+    }
+
     document.getElementById('diagResult').innerHTML = html;
   },
 
@@ -265,6 +275,8 @@ const DiagnosisTab = {
     input.value = '';
 
     this._addChatMsg('user', message);
+    this._toolRound = 0;
+    this._toolHistory = [];
     const sendBtn = document.getElementById('chatSend');
     sendBtn.disabled = true;
 
@@ -275,11 +287,151 @@ const DiagnosisTab = {
 
       const res = await Api.chat(body);
       if (!res.success) { Utils.notify(res.error, 'error'); return; }
-      this._addChatMsg('agent', res.reply);
+      this._handleChatResponse(res);
     } catch (e) {
       Utils.notify('追问失败: ' + e.message, 'error');
     } finally {
       sendBtn.disabled = false;
+    }
+  },
+
+  /** 处理追问/继续的响应：先展示执行结果，再展示待批准工具或最终回复 */
+  _handleChatResponse(res) {
+    // 1. 先展示本轮刚执行的工具结果（如果有）
+    if (res.executedToolResults && res.executedToolResults.length > 0) {
+      this._toolHistory = (this._toolHistory || []).concat(res.executedToolResults);
+      this._renderToolResults(res.executedToolResults);
+    }
+
+    // 2. 待批准工具调用 → 渲染进度条 + 批准卡片
+    if (res.pendingToolCalls && res.pendingToolCalls.length > 0) {
+      this._toolSessionId = res.sessionId;
+      this._toolRound = res.toolRound || (this._toolRound || 0) + 1;
+      this._maxToolRounds = res.maxToolRounds || 8;
+      this._renderToolApproval(res.pendingToolCalls);
+    } else {
+      // 3. 最终回复 → 清空循环状态
+      this._toolSessionId = null;
+      this._toolRound = 0;
+      this._toolHistory = [];
+      this._addChatMsg('agent', res.reply || '(空回复)');
+    }
+  },
+
+  /** 渲染可折叠的工具执行结果卡片 */
+  _renderToolResults(results) {
+    const box = document.getElementById('chatBox');
+    results.forEach(r => {
+      const msg = document.createElement('div');
+      msg.className = 'chat-msg agent';
+      const statusIcon = r.success ? '✅' : '❌';
+      const resultClass = r.success ? 'success' : 'failure';
+      msg.innerHTML = Utils.html`
+        <div class="chat-bubble" style="max-width:600px">
+          <div class="tool-result-card ${resultClass}">
+            <div class="tool-result-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">
+              <span class="tool-result-status">${statusIcon}</span>
+              <span class="tool-result-name">${Utils.escapeHtml(r.name)}</span>
+              <span class="tool-result-toggle">展开/折叠</span>
+            </div>
+            <div class="tool-result-body">
+              <div class="tool-result-args">参数: ${Utils.escapeHtml(r.arguments || '{}')}</div>
+              <div class="tool-result-output">${Utils.escapeHtml(r.result || '(无输出)')}</div>
+            </div>
+          </div>
+        </div>`;
+      box.appendChild(msg);
+    });
+    box.scrollTop = box.scrollHeight;
+  },
+
+  /** 渲染工具调用批准卡片（进度条 + 预勾选 + 可编辑参数） */
+  _renderToolApproval(pendingToolCalls) {
+    const box = document.getElementById('chatBox');
+    const round = this._toolRound || 1;
+    const maxRound = this._maxToolRounds || 8;
+    const progress = Math.round((round / maxRound) * 100);
+
+    const card = document.createElement('div');
+    card.className = 'chat-msg agent';
+    card.id = 'diagToolApprovalCard';
+
+    const toolRows = pendingToolCalls.map(tc => {
+      const tool = AppState.tools.find(t => t.name === tc.name);
+      const desc = tool ? tool.description : '';
+      const args = tc.arguments || '{}';
+      return Utils.html`
+        <div class="tool-approval-row">
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="checkbox" data-tool-id="${tc.id}" checked>
+            <strong>${Utils.escapeHtml(tc.name)}</strong>
+          </label>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">${Utils.escapeHtml(desc)}</div>
+          <textarea class="form-textarea" data-tool-args="${tc.id}" rows="3"
+            style="font-size:12px;font-family:monospace">${Utils.escapeHtml(args)}</textarea>
+        </div>`;
+    }).join('');
+
+    card.innerHTML = Utils.html`
+      <div class="chat-bubble" style="max-width:600px">
+        <div class="tool-loop-progress">
+          <span class="tool-loop-badge">第 ${round}/${maxRound} 轮</span>
+          <div class="tool-loop-bar"><div class="tool-loop-bar-fill" style="width:${progress}%"></div></div>
+          <span class="tool-loop-remaining">剩余 ${maxRound - round} 轮</span>
+        </div>
+        <div class="tool-approval-card">
+          <div class="tool-approval-title">🔧 待批准工具调用</div>
+          ${toolRows}
+          <button class="btn btn-primary btn-sm" id="diagApproveToolsBtn">批准执行</button>
+          <span id="diagApproveLoading" style="display:none;margin-left:8px">
+            <span class="spinner"></span>执行中...
+          </span>
+        </div>
+      </div>`;
+    box.appendChild(card);
+    box.scrollTop = box.scrollHeight;
+
+    document.getElementById('diagApproveToolsBtn').onclick = () => this._approveTools();
+  },
+
+  /** 收集勾选的工具调用，调用 continue 端点继续推理循环 */
+  async _approveTools() {
+    const card = document.getElementById('diagToolApprovalCard');
+    if (!card) return;
+
+    const approved = [];
+    card.querySelectorAll('.tool-approval-row').forEach(row => {
+      const cb = row.querySelector('input[type="checkbox"]');
+      if (!cb.checked) return;
+      const id = cb.dataset.toolId;
+      const argsTextarea = row.querySelector(`textarea[data-tool-args="${id}"]`);
+      approved.push({ id, name: row.querySelector('strong').textContent, arguments: argsTextarea.value });
+    });
+
+    if (approved.length === 0) {
+      Utils.notify('请至少勾选一个工具调用', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('diagApproveToolsBtn');
+    const loading = document.getElementById('diagApproveLoading');
+    btn.disabled = true;
+    loading.style.display = 'inline';
+
+    try {
+      const res = await Api.continueChat({
+        sessionId: this._toolSessionId,
+        approvedToolCalls: approved
+      });
+      if (!res.success) { Utils.notify(res.error, 'error'); return; }
+
+      card.remove();
+      this._handleChatResponse(res);
+    } catch (e) {
+      Utils.notify('工具执行失败: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
     }
   },
 

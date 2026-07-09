@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgentOps Platform — 控制台</title>
-<link rel="stylesheet" href="css/app.css?v=1.1.0">
+<link rel="stylesheet" href="css/app.css?v=1.4.0">
 </head>
 <body>
 
@@ -27,7 +27,8 @@
 <!-- Tab Bar -->
 <!-- ================================================================ -->
 <nav class="tab-bar">
-  <button class="tab-btn active" data-tab="diagnosis">🔍 诊断测试</button>
+  <button class="tab-btn active" data-tab="workbench">🧪 项目工作台</button>
+  <button class="tab-btn" data-tab="diagnosis">🔍 诊断测试</button>
   <button class="tab-btn" data-tab="projects">📁 项目配置</button>
   <button class="tab-btn" data-tab="logsources">📋 日志源</button>
   <button class="tab-btn" data-tab="history">📊 诊断历史</button>
@@ -56,7 +57,8 @@
 <!-- Tab Panels -->
 <!-- ================================================================ -->
 <main class="content">
-  <section class="tab-panel active" id="panel-diagnosis"></section>
+  <section class="tab-panel active" id="panel-workbench"></section>
+  <section class="tab-panel" id="panel-diagnosis"></section>
   <section class="tab-panel" id="panel-projects"></section>
   <section class="tab-panel" id="panel-logsources"></section>
   <section class="tab-panel" id="panel-history"></section>
@@ -65,13 +67,14 @@
 <!-- ================================================================ -->
 <!-- Scripts (dependency order: utils → api → app → components) -->
 <!-- ================================================================ -->
-<script src="js/utils.js?v=1.1.0"></script>
-<script src="js/api.js?v=1.1.0"></script>
-<script src="js/app.js?v=1.1.0"></script>
-<script src="js/components/diagnosis.js?v=1.1.0"></script>
-<script src="js/components/projects.js?v=1.1.0"></script>
-<script src="js/components/logsources.js?v=1.1.0"></script>
-<script src="js/components/history.js?v=1.1.0"></script>
+<script src="js/utils.js?v=1.4.0"></script>
+<script src="js/api.js?v=1.4.0"></script>
+<script src="js/app.js?v=1.4.0"></script>
+<script src="js/components/workbench.js?v=1.4.0"></script>
+<script src="js/components/diagnosis.js?v=1.4.0"></script>
+<script src="js/components/projects.js?v=1.4.0"></script>
+<script src="js/components/logsources.js?v=1.4.0"></script>
+<script src="js/components/history.js?v=1.4.0"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => App.init());
 </script>

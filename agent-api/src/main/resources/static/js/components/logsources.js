@@ -18,7 +18,10 @@ const LogSourcesTab = {
     });
 
     EventBus.on('tab-switched', ({ tabName }) => {
-      if (tabName === 'logsources') this._refresh();
+      if (tabName === 'logsources') {
+        this._populateProjectSelect();
+        this._refresh();
+      }
     });
 
     EventBus.on('projects-changed', () => {
@@ -109,8 +112,10 @@ const LogSourcesTab = {
               ${ls.type === 'TEXT_INPUT'
                 ? `文本长度: ${(ls.properties?.rawText || '').length} 字符`
                 : ls.type === 'FILE_PATH'
-                  ? `路径: ${ls.properties?.filePath || '未配置'}`
-                  : `ES: ${ls.properties?.esUrl || '未配置'} / ${ls.properties?.index || '未配置'}`}
+                  ? (ls.properties?.originalFileName
+                    ? `文件: ${Utils.escapeHtml(ls.properties.originalFileName)}`
+                    : `路径: ${Utils.escapeHtml(ls.properties?.filePath || '未配置')}`)
+                  : `ES: ${Utils.escapeHtml(ls.properties?.esUrl || '未配置')} / ${Utils.escapeHtml(ls.properties?.index || '未配置')}`}
             </div>
           </div>
         </div>
@@ -151,7 +156,7 @@ const LogSourcesTab = {
         <label class="form-label">类型 *</label>
         <select class="form-select" id="lsFormType">
           <option value="TEXT_INPUT">文本输入</option>
-          <option value="FILE_PATH">文件路径</option>
+          <option value="FILE_PATH">文件上传 / 路径</option>
           <option value="ELASTICSEARCH">Elasticsearch</option>
         </select>
       </div>
@@ -162,24 +167,15 @@ const LogSourcesTab = {
       const type = document.getElementById('lsFormType').value;
       if (!name) { Utils.notify('名称不能为空', 'error'); return; }
 
-      const properties = {};
-      if (type === 'TEXT_INPUT') {
-        properties.rawText = document.getElementById('lsFormRawText')?.value || '';
-      } else if (type === 'FILE_PATH') {
-        properties.filePath = document.getElementById('lsFormFilePath')?.value || '';
-      } else if (type === 'ELASTICSEARCH') {
-        properties.esUrl = document.getElementById('lsFormEsUrl')?.value || '';
-        properties.index = document.getElementById('lsFormEsIndex')?.value || '';
-      }
-
       try {
-        const res = await Api.addLogSource(this._projectId, { name, type, properties });
-        if (res.success) { Utils.notify('日志源已添加', 'success'); this._refresh(); }
-        else Utils.notify(res.error, 'error');
+        if (type === 'FILE_PATH') {
+          await this._submitFilePathForm(name);
+        } else {
+          await this._submitJsonForm(name, type);
+        }
       } catch (e) { Utils.notify('添加失败: ' + e.message, 'error'); }
     }, '添加');
 
-    // 动态渲染类型相关字段
     const renderDynamic = () => {
       const type = document.getElementById('lsFormType').value;
       const container = document.getElementById('lsFormDynamic');
@@ -193,24 +189,121 @@ const LogSourcesTab = {
       } else if (type === 'FILE_PATH') {
         container.innerHTML = Utils.html`
           <div class="form-group">
-            <label class="form-label">文件路径 *</label>
+            <label class="form-label">上传日志文件 *</label>
+            <input type="file" id="lsFormFile" class="form-input"
+              accept=".log,.txt,.out,text/*">
+            <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px">
+              选择本地日志文件上传（限 10MB）
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">或手动输入服务器路径（高级）</label>
             <input class="form-input" id="lsFormFilePath" placeholder="/var/log/app.log">
+            <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px">
+              如不上传文件，可填写服务器本地日志文件路径
+            </div>
           </div>`;
       } else if (type === 'ELASTICSEARCH') {
         container.innerHTML = Utils.html`
           <div class="form-group">
-            <label class="form-label">ES 地址</label>
+            <label class="form-label">ES 地址 *</label>
             <input class="form-input" id="lsFormEsUrl" placeholder="http://es-cluster:9200">
           </div>
           <div class="form-group">
-            <label class="form-label">索引名</label>
+            <label class="form-label">索引名 *</label>
             <input class="form-input" id="lsFormEsIndex" placeholder="app-logs-*">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Basic Auth 用户名（可选）</label>
+            <input class="form-input" id="lsFormEsUsername" placeholder="elastic">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Basic Auth 密码（可选）</label>
+            <input type="password" class="form-input" id="lsFormEsPassword" placeholder="changeme">
+          </div>
+          <div class="form-group">
+            <label class="form-label">或 API Key（可选，与 Basic Auth 二选一）</label>
+            <input class="form-input" id="lsFormEsApiKey" placeholder="encoded_api_key">
+          </div>
+          <div class="form-group">
+            <button class="btn btn-outline btn-sm" id="lsFormTestBtn" type="button">测试连接</button>
+            <span id="lsFormTestResult" style="margin-left:8px;font-size:13px"></span>
           </div>`;
+        document.getElementById('lsFormTestBtn').onclick = () => this._testEsConnection();
       }
     };
 
     document.getElementById('lsFormType').onchange = renderDynamic;
     renderDynamic();
+  },
+
+  /** 提交 FILE_PATH 表单：有文件走上传，否则走手动路径 */
+  async _submitFilePathForm(name) {
+    const fileInput = document.getElementById('lsFormFile');
+    const filePath = document.getElementById('lsFormFilePath')?.value.trim() || '';
+
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+      const res = await Api.uploadLogSource(this._projectId, name, fileInput.files[0]);
+      if (res.success) { Utils.notify('日志源已添加', 'success'); this._refresh(); }
+      else Utils.notify(res.error, 'error');
+    } else if (filePath) {
+      const res = await Api.addLogSource(this._projectId,
+        { name, type: 'FILE_PATH', properties: { filePath } });
+      if (res.success) { Utils.notify('日志源已添加', 'success'); this._refresh(); }
+      else Utils.notify(res.error, 'error');
+    } else {
+      Utils.notify('请上传文件或填写服务器路径', 'error');
+    }
+  },
+
+  /** 提交 TEXT_INPUT / ELASTICSEARCH 表单（JSON 方式） */
+  async _submitJsonForm(name, type) {
+    const properties = {};
+    if (type === 'TEXT_INPUT') {
+      properties.rawText = document.getElementById('lsFormRawText')?.value || '';
+    } else if (type === 'ELASTICSEARCH') {
+      properties.esUrl = document.getElementById('lsFormEsUrl')?.value.trim() || '';
+      properties.index = document.getElementById('lsFormEsIndex')?.value.trim() || '';
+      const username = document.getElementById('lsFormEsUsername')?.value.trim() || '';
+      const password = document.getElementById('lsFormEsPassword')?.value || '';
+      const apiKey = document.getElementById('lsFormEsApiKey')?.value.trim() || '';
+      if (username) { properties.username = username; properties.password = password; }
+      if (apiKey) { properties.apiKey = apiKey; }
+    }
+
+    const res = await Api.addLogSource(this._projectId, { name, type, properties });
+    if (res.success) { Utils.notify('日志源已添加', 'success'); this._refresh(); }
+    else Utils.notify(res.error, 'error');
+  },
+
+  /** 测试 ES 连接配置 */
+  async _testEsConnection() {
+    const resultEl = document.getElementById('lsFormTestResult');
+    const properties = {
+      esUrl: document.getElementById('lsFormEsUrl')?.value.trim() || '',
+      index: document.getElementById('lsFormEsIndex')?.value.trim() || ''
+    };
+    const username = document.getElementById('lsFormEsUsername')?.value.trim() || '';
+    const password = document.getElementById('lsFormEsPassword')?.value || '';
+    const apiKey = document.getElementById('lsFormEsApiKey')?.value.trim() || '';
+    if (username) { properties.username = username; properties.password = password; }
+    if (apiKey) { properties.apiKey = apiKey; }
+
+    resultEl.textContent = '测试中...';
+    resultEl.style.color = 'var(--color-text-secondary)';
+    try {
+      const res = await Api.testLogSource({ type: 'ELASTICSEARCH', properties });
+      if (res.success) {
+        resultEl.textContent = res.message || '连接成功';
+        resultEl.style.color = 'var(--color-success, #28a745)';
+      } else {
+        resultEl.textContent = res.message || '连接失败';
+        resultEl.style.color = 'var(--color-danger, #dc3545)';
+      }
+    } catch (e) {
+      resultEl.textContent = '测试失败: ' + e.message;
+      resultEl.style.color = 'var(--color-danger, #dc3545)';
+    }
   },
 
   _confirmDelete(lsId) {

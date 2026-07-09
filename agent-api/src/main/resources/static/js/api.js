@@ -56,6 +56,23 @@ const Api = {
   async addLogSource(projectId, data) {
     return this._fetch('POST', `/api/projects/${projectId}/logsources`, data);
   },
+  async uploadLogSource(projectId, name, file) {
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('file', file);
+    const res = await fetch(`/api/projects/${projectId}/logsources/upload`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    return res.json();
+  },
+  async testLogSource(data) {
+    return this._fetch('POST', '/api/logsources/test', data);
+  },
+  async fetchLogSource(projectId, logSourceId, data) {
+    return this._fetch('POST', `/api/projects/${projectId}/logsources/${logSourceId}/fetch`, data || {});
+  },
   async updateLogSource(projectId, lsId, data) {
     return this._fetch('PUT', `/api/projects/${projectId}/logsources/${lsId}`, data);
   },
@@ -69,6 +86,9 @@ const Api = {
   },
   async chat(data) {
     return this._fetch('POST', '/api/chat', data);
+  },
+  async continueChat(data) {
+    return this._fetch('POST', '/api/chat/continue', data);
   },
 
   // ---- 诊断历史 (V1.0 Phase 3) ----

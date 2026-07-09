@@ -45,6 +45,16 @@ public class TextInputLogProvider implements LogProvider {
     }
 
     @Override
+    public ToolResult test(LogSourceConfig config) {
+        String rawText = config.property("rawText", "");
+        if (rawText.isBlank()) {
+            return ToolResult.failure("日志文本为空（rawText 未配置）");
+        }
+        int lineCount = rawText.split("\\r?\\n").length;
+        return ToolResult.success("文本日志源可用（" + lineCount + " 行，" + rawText.length() + " 字符）");
+    }
+
+    @Override
     public LogSourceType supportedType() {
         return LogSourceType.TEXT_INPUT;
     }

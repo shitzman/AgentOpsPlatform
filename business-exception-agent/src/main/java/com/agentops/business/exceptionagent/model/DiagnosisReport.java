@@ -29,6 +29,7 @@ import java.util.List;
  * @param gitBlameHints       可疑的 Git 提交线索列表（V1.0 Phase 3）
  * @param environmentFactors  可能相关的环境因素列表（V1.0 Phase 3）
  * @param logContextSummary   关联日志上下文的关键发现摘要（V1.0 Phase 3）
+ * @param followUpQuestions   信息不足时的引导性追问列表（V1.4），引导用户补充信息
  */
 public record DiagnosisReport(
         String summary,
@@ -43,7 +44,8 @@ public record DiagnosisReport(
         String traceId,
         List<String> gitBlameHints,
         List<String> environmentFactors,
-        String logContextSummary) {
+        String logContextSummary,
+        List<String> followUpQuestions) {
 
     public DiagnosisReport {
         if (summary == null || summary.isBlank()) {
@@ -66,6 +68,9 @@ public record DiagnosisReport(
                 : Collections.emptyList();
         environmentFactors = environmentFactors != null
                 ? Collections.unmodifiableList(environmentFactors)
+                : Collections.emptyList();
+        followUpQuestions = followUpQuestions != null
+                ? Collections.unmodifiableList(followUpQuestions)
                 : Collections.emptyList();
         // traceId 和 logContextSummary 为可选字段，允许 null
     }

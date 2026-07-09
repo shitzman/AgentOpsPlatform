@@ -11,8 +11,8 @@ import java.util.Map;
  * 有各自的键名约定：
  * <ul>
  *   <li>{@code TEXT_INPUT}: {@code {"rawText": "日志文本内容"}}</li>
- *   <li>{@code FILE_PATH}: {@code {"filePath": "/var/log/app.log"}}</li>
- *   <li>{@code ELASTICSEARCH}: {@code {"esUrl": "http://...", "index": "logs-*"}}</li>
+ *   <li>{@code FILE_PATH}: {@code {"filePath": "/var/log/app.log"}} 或上传文件时附 {@code "originalFileName": "app.log"}</li>
+ *   <li>{@code ELASTICSEARCH}: {@code {"esUrl": "http://...", "index": "logs-*", "username": "...", "password": "...", "apiKey": "..."}}（认证可选，Basic Auth 与 API Key 二选一）</li>
  * </ul>
  *
  * @param id         唯一标识（UUID）

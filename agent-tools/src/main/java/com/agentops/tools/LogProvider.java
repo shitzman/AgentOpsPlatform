@@ -35,4 +35,21 @@ public interface LogProvider {
      * 用于在 {@code LogProviderRegistry} 中注册和查找。
      */
     LogSourceType supportedType();
+
+    /**
+     * 测试日志源连通性 — 验证配置参数是否可用（保存前调用）。
+     *
+     * <p>默认实现返回成功，子类可覆盖以执行类型特定的检查：
+     * <ul>
+     *   <li>ELASTICSEARCH：HTTP GET {esUrl} 验证连通性和认证</li>
+     *   <li>FILE_PATH：验证文件存在且可读</li>
+     *   <li>TEXT_INPUT：验证 rawText 非空</li>
+     * </ul>
+     *
+     * @param config 日志源配置
+     * @return 成功时 output 包含确认信息（如 ES 版本号），失败时 error 包含原因
+     */
+    default ToolResult test(LogSourceConfig config) {
+        return ToolResult.success("测试通过");
+    }
 }

@@ -141,6 +141,14 @@ const ProjectsTab = {
         };
         if (!data.name) { Utils.notify('项目名称不能为空', 'error'); return; }
 
+        // 编辑模式下收集勾选的工具
+        if (isEdit) {
+          const toolContainer = document.getElementById('projFormTools');
+          if (toolContainer && toolContainer._getCheckedTools) {
+            data.enabledTools = toolContainer._getCheckedTools();
+          }
+        }
+
         try {
           const res = isEdit
             ? await Api.updateProject(existing.id, data)

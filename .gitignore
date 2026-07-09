@@ -37,6 +37,13 @@ bin/
 application-local.yml
 **/application-local.yml
 
+# IDE files (local)
+.trae/
+.vscode/
+
 # OS files
 .DS_Store
 Thumbs.db
+
+# Node.js (not a Node project)
+package-lock.json

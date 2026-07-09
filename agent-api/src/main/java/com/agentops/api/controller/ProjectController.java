@@ -1,33 +1,67 @@
 package com.agentops.api.controller;
 
-import com.agentops.business.exceptionagent.model.DiagnosisContext;
-import com.agentops.repository.MySqlProjectManager;
-import com.agentops.repository.entity.ProjectEntity;
-import com.agentops.tools.*;
-import org.springframework.web.bind.annotation.*;
+import com.agentops.api.dto.LogSourceCreateRequest;
+import com.agentops.api.dto.LogSourceTestRequest;
+import com.agentops.api.dto.LogSourceUpdateRequest;
+import com.agentops.api.dto.LogFetchRequest;
+import com.agentops.api.dto.ProjectContextRequest;
+import com.agentops.api.dto.ProjectCreateRequest;
+import com.agentops.api.dto.ProjectToolsUpdateRequest;
+import com.agentops.api.dto.ProjectUpdateRequest;
+import com.agentops.api.service.LogFetchService;
+import com.agentops.api.service.LogSourceTestService;
+import com.agentops.api.service.ProjectService;
+import com.agentops.api.vo.LogFetchResultVo;
+import com.agentops.api.vo.LogSourceListResponseVo;
+import com.agentops.api.vo.LogSourceResponseVo;
+import com.agentops.api.vo.LogSourceTestResultVo;
+import com.agentops.api.vo.ProjectContextResponseVo;
+import com.agentops.api.vo.ProjectListResponseVo;
+import com.agentops.api.vo.ProjectResponseVo;
+import com.agentops.api.vo.SimpleResultVo;
+import com.agentops.api.vo.ToolListResponseVo;
+import com.agentops.tools.LogSourceConfig;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.*;
+import java.util.Optional;
 
 /**
  * 项目管理 REST API — 检测项目的 CRUD、日志源管理和工具配置。
  *
- * <p>V1 变更：使用 MySqlProjectManager（MySQL 持久化），ProjectEntity 替代旧 Project record。
+ * <p>本类仅做 HTTP 适配：DTO 绑定与 VO 构造。业务逻辑（校验、DTO→Map 转换、
+ * 上下文构建）由 {@link ProjectService} 承担。
  *
  * <p>端点分组：
  * <ul>
  *   <li><b>项目</b> — POST/GET/PUT/DELETE /api/projects</li>
  *   <li><b>工具</b> — GET/PUT /api/projects/{id}/tools + GET /api/tools</li>
  *   <li><b>日志源</b> — GET/POST/PUT/DELETE /api/projects/{id}/logsources</li>
+ *   <li><b>上下文</b> — POST /api/projects/{id}/context</li>
  * </ul>
  */
 @RestController
 @RequestMapping("/api")
 public class ProjectController {
 
-    private final MySqlProjectManager projectManager;
+    private final ProjectService projectService;
+    private final LogSourceTestService logSourceTestService;
+    private final LogFetchService logFetchService;
 
-    public ProjectController(MySqlProjectManager projectManager) {
-        this.projectManager = projectManager;
+    public ProjectController(ProjectService projectService,
+                             LogSourceTestService logSourceTestService,
+                             LogFetchService logFetchService) {
+        this.projectService = projectService;
+        this.logSourceTestService = logSourceTestService;
+        this.logFetchService = logFetchService;
     }
 
     // ========================================================================
@@ -36,78 +70,59 @@ public class ProjectController {
 
     /** 创建项目 */
     @PostMapping("/projects")
-    public Map<String, Object> createProject(@RequestBody Map<String, String> body) {
+    public ProjectResponseVo createProject(@RequestBody ProjectCreateRequest request) {
         try {
-            String name = body.get("name");
-            if (name == null || name.isBlank()) {
-                return Map.of("success", false, "error", "缺少 name 字段");
-            }
-
-            ProjectEntity project = projectManager.createProject(
-                    name,
-                    body.getOrDefault("description", ""),
-                    body.getOrDefault("gitRepoUrl", ""),
-                    body.getOrDefault("gitRepoLocalPath", System.getProperty("user.dir"))
-            );
-
-            return Map.of("success", true, "project", project);
+            return ProjectResponseVo.ok(projectService.createProject(request));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ProjectResponseVo.error(e.getMessage());
         }
     }
 
     /** 列出所有项目 */
     @GetMapping("/projects")
-    public Map<String, Object> listProjects() {
+    public ProjectListResponseVo listProjects() {
         try {
-            List<ProjectEntity> projects = projectManager.listProjects();
-            return Map.of("success", true, "projects", projects);
+            return ProjectListResponseVo.ok(projectService.listProjects());
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ProjectListResponseVo.error(e.getMessage());
         }
     }
 
     /** 获取单个项目详情（含关联的日志源列表） */
     @GetMapping("/projects/{id}")
-    public Map<String, Object> getProject(@PathVariable String id) {
+    public ProjectResponseVo getProject(@PathVariable String id) {
         try {
-            Optional<ProjectEntity> project = projectManager.getProject(id);
-            if (project.isEmpty()) {
-                return Map.of("success", false, "error", "项目不存在: " + id);
-            }
-            List<LogSourceConfig> logSources = projectManager.getLogSources(id);
-            return Map.of("success", true, "project", project.get(), "logSources", logSources);
+            Optional<ProjectService.ProjectDetail> detail = projectService.getProjectDetail(id);
+            return detail
+                    .map(d -> ProjectResponseVo.ok(d.project(), d.logSources()))
+                    .orElseGet(() -> ProjectResponseVo.error("项目不存在: " + id));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ProjectResponseVo.error(e.getMessage());
         }
     }
 
     /** 更新项目 */
     @PutMapping("/projects/{id}")
-    public Map<String, Object> updateProject(@PathVariable String id,
-                                              @RequestBody Map<String, Object> body) {
+    public ProjectResponseVo updateProject(@PathVariable String id,
+                                           @RequestBody ProjectUpdateRequest request) {
         try {
-            Optional<ProjectEntity> updated = projectManager.updateProject(id, body);
-            if (updated.isEmpty()) {
-                return Map.of("success", false, "error", "项目不存在: " + id);
-            }
-            return Map.of("success", true, "project", updated.get());
+            return projectService.updateProject(id, request)
+                    .map(ProjectResponseVo::ok)
+                    .orElseGet(() -> ProjectResponseVo.error("项目不存在: " + id));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ProjectResponseVo.error(e.getMessage());
         }
     }
 
     /** 删除项目（级联删除关联日志源） */
     @DeleteMapping("/projects/{id}")
-    public Map<String, Object> deleteProject(@PathVariable String id) {
+    public SimpleResultVo deleteProject(@PathVariable String id) {
         try {
-            boolean deleted = projectManager.deleteProject(id);
-            if (!deleted) {
-                return Map.of("success", false, "error", "项目不存在: " + id);
-            }
-            return Map.of("success", true);
+            return projectService.deleteProject(id)
+                    ? SimpleResultVo.ok()
+                    : SimpleResultVo.error("项目不存在: " + id);
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return SimpleResultVo.error(e.getMessage());
         }
     }
 
@@ -117,33 +132,24 @@ public class ProjectController {
 
     /** 列出全局所有可用工具（供 UI 展示勾选框） */
     @GetMapping("/tools")
-    public Map<String, Object> listAvailableTools() {
+    public ToolListResponseVo listAvailableTools() {
         try {
-            return Map.of("success", true,
-                    "tools", projectManager.listAvailableToolNames());
+            return ToolListResponseVo.ok(projectService.listAvailableTools());
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ToolListResponseVo.error(e.getMessage());
         }
     }
 
     /** 设置项目启用的工具列表 */
     @PutMapping("/projects/{id}/tools")
-    public Map<String, Object> setProjectTools(@PathVariable String id,
-                                                @RequestBody Map<String, Object> body) {
+    public ProjectResponseVo setProjectTools(@PathVariable String id,
+                                             @RequestBody ProjectToolsUpdateRequest request) {
         try {
-            @SuppressWarnings("unchecked")
-            List<String> toolNames = (List<String>) body.get("toolNames");
-            if (toolNames == null) {
-                return Map.of("success", false, "error", "缺少 toolNames 字段");
-            }
-
-            Optional<ProjectEntity> updated = projectManager.enableTools(id, toolNames);
-            if (updated.isEmpty()) {
-                return Map.of("success", false, "error", "项目不存在: " + id);
-            }
-            return Map.of("success", true, "project", updated.get());
+            return projectService.setProjectTools(id, request.toolNames())
+                    .map(ProjectResponseVo::ok)
+                    .orElseGet(() -> ProjectResponseVo.error("项目不存在: " + id));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ProjectResponseVo.error(e.getMessage());
         }
     }
 
@@ -153,77 +159,92 @@ public class ProjectController {
 
     /** 列出项目的所有日志源 */
     @GetMapping("/projects/{id}/logsources")
-    public Map<String, Object> listLogSources(@PathVariable String id) {
+    public LogSourceListResponseVo listLogSources(@PathVariable String id) {
         try {
-            List<LogSourceConfig> sources = projectManager.getLogSources(id);
-            return Map.of("success", true, "logSources", sources);
+            return LogSourceListResponseVo.ok(projectService.listLogSources(id));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return LogSourceListResponseVo.error(e.getMessage());
         }
     }
 
     /** 添加日志源 */
     @PostMapping("/projects/{id}/logsources")
-    public Map<String, Object> addLogSource(@PathVariable String id,
-                                             @RequestBody Map<String, Object> body) {
+    public LogSourceResponseVo addLogSource(@PathVariable String id,
+                                            @RequestBody LogSourceCreateRequest request) {
         try {
-            String name = stringField(body, "name");
-            String typeStr = stringField(body, "type");
-            if (name == null || typeStr == null) {
-                return Map.of("success", false, "error", "缺少 name 或 type 字段");
-            }
-
-            LogSourceType type;
-            try {
-                type = LogSourceType.valueOf(typeStr);
-            } catch (IllegalArgumentException e) {
-                return Map.of("success", false, "error",
-                        "无效的日志源类型: " + typeStr + "，可选: TEXT_INPUT, FILE_PATH, ELASTICSEARCH");
-            }
-
-            @SuppressWarnings("unchecked")
-            Map<String, String> properties = (Map<String, String>) body.getOrDefault("properties", Map.of());
-
-            LogSourceConfig source = projectManager.addLogSource(id, name, type, properties);
-            return Map.of("success", true, "logSource", source);
+            LogSourceConfig source = projectService.addLogSource(id, request);
+            return LogSourceResponseVo.ok(source);
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return LogSourceResponseVo.error(e.getMessage());
+        }
+    }
+
+    /** 通过文件上传添加日志源（FILE_PATH 类型） */
+    @PostMapping("/projects/{id}/logsources/upload")
+    public LogSourceResponseVo uploadLogSource(@PathVariable String id,
+                                               @RequestParam("name") String name,
+                                               @RequestParam("file") MultipartFile file) {
+        try {
+            LogSourceConfig source = projectService.uploadLogSource(id, name, file);
+            return LogSourceResponseVo.ok(source);
+        } catch (Exception e) {
+            return LogSourceResponseVo.error(e.getMessage());
+        }
+    }
+
+    /** 测试日志源连通性（保存前调用，不依赖项目） */
+    @PostMapping("/logsources/test")
+    public LogSourceTestResultVo testLogSource(@RequestBody LogSourceTestRequest request) {
+        try {
+            return logSourceTestService.test(request);
+        } catch (Exception e) {
+            return LogSourceTestResultVo.error(e.getMessage());
+        }
+    }
+
+    /** 按日志源 ID 拉取日志内容（供工作台异常分析使用） */
+    @PostMapping("/projects/{projectId}/logsources/{logSourceId}/fetch")
+    public LogFetchResultVo fetchLogSource(@PathVariable String projectId,
+                                           @PathVariable String logSourceId,
+                                           @RequestBody(required = false) LogFetchRequest request) {
+        try {
+            String keyword = request != null ? request.keyword() : null;
+            Integer limit = request != null ? request.limit() : null;
+            return logFetchService.fetch(projectId, logSourceId, keyword, limit);
+        } catch (Exception e) {
+            return LogFetchResultVo.error(e.getMessage());
         }
     }
 
     /** 更新日志源 */
     @PutMapping("/projects/{projectId}/logsources/{logSourceId}")
-    public Map<String, Object> updateLogSource(@PathVariable String projectId,
-                                                @PathVariable String logSourceId,
-                                                @RequestBody Map<String, Object> body) {
+    public LogSourceResponseVo updateLogSource(@PathVariable String projectId,
+                                               @PathVariable String logSourceId,
+                                               @RequestBody LogSourceUpdateRequest request) {
         try {
-            Optional<LogSourceConfig> updated = projectManager.updateLogSource(logSourceId, body);
-            if (updated.isEmpty()) {
-                return Map.of("success", false, "error", "日志源不存在: " + logSourceId);
-            }
-            return Map.of("success", true, "logSource", updated.get());
+            return projectService.updateLogSource(logSourceId, request)
+                    .map(LogSourceResponseVo::ok)
+                    .orElseGet(() -> LogSourceResponseVo.error("日志源不存在: " + logSourceId));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return LogSourceResponseVo.error(e.getMessage());
         }
     }
 
     /** 删除日志源 */
     @DeleteMapping("/projects/{projectId}/logsources/{logSourceId}")
-    public Map<String, Object> deleteLogSource(@PathVariable String projectId,
-                                                @PathVariable String logSourceId) {
+    public SimpleResultVo deleteLogSource(@PathVariable String projectId,
+                                          @PathVariable String logSourceId) {
         try {
-            boolean deleted = projectManager.deleteLogSource(projectId, logSourceId);
-            if (!deleted) {
-                return Map.of("success", false, "error", "日志源不存在: " + logSourceId);
-            }
-            return Map.of("success", true);
+            return projectService.deleteLogSource(projectId, logSourceId)
+                    ? SimpleResultVo.ok()
+                    : SimpleResultVo.error("日志源不存在: " + logSourceId);
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return SimpleResultVo.error(e.getMessage());
         }
     }
 
     // ========================================================================
-    // 项目上下文快照 (Phase 2)
+    // 项目上下文快照
     // ========================================================================
 
     /**
@@ -235,60 +256,12 @@ public class ProjectController {
      * </pre>
      */
     @PostMapping("/projects/{id}/context")
-    public Map<String, Object> getProjectContext(@PathVariable String id,
-                                                  @RequestBody Map<String, String> body) {
+    public ProjectContextResponseVo getProjectContext(@PathVariable String id,
+                                                      @RequestBody ProjectContextRequest request) {
         try {
-            Optional<ProjectEntity> projectOpt = projectManager.getProject(id);
-            if (projectOpt.isEmpty()) {
-                return Map.of("success", false, "error", "项目不存在: " + id);
-            }
-            ProjectEntity project = projectOpt.get();
-
-            // 1. 采集运行环境
-            EnvironmentInfo env = EnvironmentCollector.collect();
-
-            // 2. 采集 Git 上下文
-            GitContext gitCtx = null;
-            String repoPath = project.getGitRepoLocalPath();
-            if (repoPath != null && !repoPath.isBlank()) {
-                GitContextProvider gitProvider = new GitContextProvider(repoPath);
-                gitCtx = gitProvider.collect(List.of());
-            }
-
-            // 3. 提取日志中的堆栈和上下文
-            String stackTrace = null;
-            String logContext = null;
-            String logContent = body.get("logContent");
-            if (logContent != null && !logContent.isBlank()) {
-                stackTrace = LogExtractor.extractStackTrace(logContent);
-                if (stackTrace != null) {
-                    logContext = LogExtractor.extractLogContext(logContent, stackTrace);
-                }
-            }
-
-            // 4. 组装 DiagnosisContext
-            DiagnosisContext ctx = new DiagnosisContext(
-                    project.getId(),
-                    project.getName(),
-                    project.getDescription(),
-                    stackTrace,
-                    null,  // parsedStackTrace — 由诊断 Workflow 负责解析
-                    logContext,
-                    gitCtx,
-                    env);
-
-            return Map.of("success", true, "context", ctx);
+            return ProjectContextResponseVo.ok(projectService.getProjectContext(id, request.logContent()));
         } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage());
+            return ProjectContextResponseVo.error(e.getMessage());
         }
-    }
-
-    // ========================================================================
-    // 辅助方法
-    // ========================================================================
-
-    private static String stringField(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value instanceof String s && !s.isBlank() ? s : null;
     }
 }
