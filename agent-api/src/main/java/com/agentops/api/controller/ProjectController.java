@@ -20,7 +20,7 @@ import com.agentops.api.vo.ProjectListResponseVo;
 import com.agentops.api.vo.ProjectResponseVo;
 import com.agentops.api.vo.SimpleResultVo;
 import com.agentops.api.vo.ToolListResponseVo;
-import com.agentops.tools.LogSourceConfig;
+import com.agentops.tools.log.LogSourceConfig;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

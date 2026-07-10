@@ -2,11 +2,11 @@ package com.agentops.api.service;
 
 import com.agentops.api.dto.LogSourceTestRequest;
 import com.agentops.api.vo.LogSourceTestResultVo;
-import com.agentops.tools.LogProvider;
-import com.agentops.tools.LogProviderRegistry;
-import com.agentops.tools.LogSourceConfig;
-import com.agentops.tools.LogSourceType;
-import com.agentops.tools.ToolResult;
+import com.agentops.tools.core.ToolResult;
+import com.agentops.tools.log.LogProvider;
+import com.agentops.tools.log.LogProviderRegistry;
+import com.agentops.tools.log.LogSourceConfig;
+import com.agentops.tools.log.LogSourceType;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;

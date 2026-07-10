@@ -13,9 +13,11 @@ import com.agentops.api.vo.PendingToolCallVo;
 import com.agentops.api.vo.ToolExecutionResultVo;
 import com.agentops.prompts.PromptRegistry;
 import com.agentops.runtime.model.ToolCall;
-import com.agentops.tools.ToolRegistry;
+import com.agentops.tools.core.ToolRegistry;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,6 +44,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api")
 public class DiagnosisController {
+
+    private static final Logger log = LoggerFactory.getLogger(DiagnosisController.class);
 
     private final DiagnosisService diagnosisService;
     private final DiagnosisReportPersistenceService reportPersistenceService;
@@ -77,13 +81,20 @@ public class DiagnosisController {
     @PostMapping("/diagnosis")
     public DiagnosisResponseVo diagnose(@RequestBody DiagnosisRequest request) {
         Span span = tracer.nextSpan().name("POST /api/diagnosis").start();
+        String mode = (request.stackTrace() == null || request.stackTrace().isBlank())
+                ? "log-analysis" : "stack-trace";
+        log.info("[diagnose] start: mode={}, conversationId={}, projectId={}",
+                mode, request.conversationId(), request.projectId());
         try (var scope = tracer.withSpan(span)) {
             DiagnosisService.DiagnosisResult result = diagnosisService.diagnose(
                     request.stackTrace(), request.logContent(),
                     request.conversationId(), request.projectId());
+            log.info("[diagnose] done: conversationId={}, reportSeverity={}",
+                    result.conversationId(), result.report().severity());
             return DiagnosisResponseVo.ok(result.report(), result.conversationId());
         } catch (Exception e) {
             span.tag("error", e.getMessage());
+            log.warn("[diagnose] failed: {}", e.getMessage(), e);
             return DiagnosisResponseVo.error(e.getMessage());
         } finally {
             span.end();
@@ -120,12 +131,17 @@ public class DiagnosisController {
     @PostMapping("/chat")
     public ChatReplyVo chat(@RequestBody ChatFollowUpRequest request) {
         Span span = tracer.nextSpan().name("POST /api/chat").start();
+        int msgLen = request.message() == null ? 0 : request.message().length();
+        log.info("[chat] start: conversationId={}, messageLen={}", request.conversationId(), msgLen);
         try (var scope = tracer.withSpan(span)) {
             DiagnosisService.ChatResult result = diagnosisService.chat(
                     request.conversationId(), request.message(), request.projectId());
+            log.info("[chat] done: conversationId={}, hasPendingToolCalls={}, toolRound={}",
+                    result.conversationId(), result.hasPendingToolCalls(), result.toolRound());
             return toChatReplyVo(result);
         } catch (Exception e) {
             span.tag("error", e.getMessage());
+            log.warn("[chat] failed: {}", e.getMessage(), e);
             return ChatReplyVo.error(e.getMessage());
         } finally {
             span.end();
@@ -140,12 +156,17 @@ public class DiagnosisController {
     @PostMapping("/chat/continue")
     public ChatReplyVo continueChat(@RequestBody ToolApproveRequest request) {
         Span span = tracer.nextSpan().name("POST /api/chat/continue").start();
+        int approvedCount = request.approvedToolCalls() == null ? 0 : request.approvedToolCalls().size();
+        log.info("[continueChat] start: sessionId={}, approvedToolCalls={}", request.sessionId(), approvedCount);
         try (var scope = tracer.withSpan(span)) {
             DiagnosisService.ChatResult result = diagnosisService.continueWithTools(
                     request.sessionId(), request.approvedToolCalls());
+            log.info("[continueChat] done: sessionId={}, hasPendingToolCalls={}, toolRound={}",
+                    request.sessionId(), result.hasPendingToolCalls(), result.toolRound());
             return toChatReplyVo(result);
         } catch (Exception e) {
             span.tag("error", e.getMessage());
+            log.warn("[continueChat] failed: {}", e.getMessage(), e);
             return ChatReplyVo.error(e.getMessage());
         } finally {
             span.end();

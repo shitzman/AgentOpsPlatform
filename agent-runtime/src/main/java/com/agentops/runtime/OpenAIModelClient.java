@@ -1,7 +1,7 @@
 package com.agentops.runtime;
 
 import com.agentops.runtime.model.*;
-import com.agentops.tools.ToolDefinition;
+import com.agentops.tools.core.ToolDefinition;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 

@@ -12,7 +12,18 @@ import com.agentops.repository.mapper.MemoryEntryMapper;
 import com.agentops.repository.mapper.ProjectMapper;
 import com.agentops.runtime.model.ModelClient;
 import com.agentops.runtime.OpenAIModelClient;
-import com.agentops.tools.*;
+import com.agentops.tools.core.InMemoryToolRegistry;
+import com.agentops.tools.core.ToolRegistry;
+import com.agentops.tools.git.GitTool;
+import com.agentops.tools.log.ElasticsearchLogProvider;
+import com.agentops.tools.log.FileLogProvider;
+import com.agentops.tools.log.InMemoryLogProviderRegistry;
+import com.agentops.tools.log.LogProviderRegistry;
+import com.agentops.tools.log.LogTool;
+import com.agentops.tools.log.TextInputLogProvider;
+import com.agentops.tools.source.SourceCodeTool;
+import com.agentops.tools.source.RouteLookupTool;
+import com.agentops.tools.source.SearchCodeTool;
 import com.agentops.workflow.SequentialWorkflowEngine;
 import com.agentops.workflow.WorkflowEngine;
 import org.mybatis.spring.annotation.MapperScan;
@@ -48,6 +59,14 @@ public class AgentOpsConfig {
         // 源码阅读工具（诊断核心工具 — 读取源码理解代码逻辑）
         SourceCodeTool sourceCodeTool = new SourceCodeTool(gitRepoPath);
         registry.register(SourceCodeTool.definition(), sourceCodeTool.executor());
+
+        // 路由反查工具（入口工具 — 接口路径定位 Controller 方法源码位置）
+        RouteLookupTool routeLookupTool = new RouteLookupTool(gitRepoPath);
+        registry.register(RouteLookupTool.definition(), routeLookupTool.executor());
+
+        // 代码搜索工具（入口工具 — 日志/异常消息文本反查源码位置）
+        SearchCodeTool searchCodeTool = new SearchCodeTool(gitRepoPath);
+        registry.register(SearchCodeTool.definition(), searchCodeTool.executor());
 
         // Git 工具（log / blame / show — 辅助定位最近变更）
         GitTool git = new GitTool(gitRepoPath);

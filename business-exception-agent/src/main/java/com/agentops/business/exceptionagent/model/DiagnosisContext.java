@@ -1,7 +1,7 @@
 package com.agentops.business.exceptionagent.model;
 
-import com.agentops.tools.EnvironmentInfo;
-import com.agentops.tools.GitContext;
+import com.agentops.tools.env.EnvironmentInfo;
+import com.agentops.tools.git.GitContext;
 
 /**
  * 诊断上下文 — 聚合多源数据，作为 LLM 诊断的完整输入。

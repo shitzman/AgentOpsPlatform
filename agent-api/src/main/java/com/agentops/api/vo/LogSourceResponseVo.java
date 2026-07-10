@@ -1,6 +1,6 @@
 package com.agentops.api.vo;
 
-import com.agentops.tools.LogSourceConfig;
+import com.agentops.tools.log.LogSourceConfig;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**

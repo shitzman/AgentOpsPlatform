@@ -1,6 +1,6 @@
 package com.agentops.runtime.model;
 
-import com.agentops.tools.ToolDefinition;
+import com.agentops.tools.core.ToolDefinition;
 
 import java.util.Collections;
 import java.util.List;
