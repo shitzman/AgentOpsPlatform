@@ -1,6 +1,7 @@
 package com.agentops.api.config;
 
 import com.agentops.business.exceptionagent.BusinessExceptionAgent;
+import com.agentops.business.exceptionagent.DiagnosisOrchestrator;
 import com.agentops.memory.MemoryStore;
 import com.agentops.prompts.InMemoryPromptRegistry;
 import com.agentops.prompts.PromptRegistry;
@@ -10,6 +11,8 @@ import com.agentops.repository.MySqlProjectManager;
 import com.agentops.repository.mapper.LogSourceMapper;
 import com.agentops.repository.mapper.MemoryEntryMapper;
 import com.agentops.repository.mapper.ProjectMapper;
+import com.agentops.runtime.loop.DefaultReasoningLoop;
+import com.agentops.runtime.loop.ReasoningLoop;
 import com.agentops.runtime.model.ModelClient;
 import com.agentops.runtime.OpenAIModelClient;
 import com.agentops.tools.core.InMemoryToolRegistry;
@@ -26,6 +29,7 @@ import com.agentops.tools.source.RouteLookupTool;
 import com.agentops.tools.source.SearchCodeTool;
 import com.agentops.workflow.SequentialWorkflowEngine;
 import com.agentops.workflow.WorkflowEngine;
+import io.micrometer.tracing.Tracer;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -136,6 +140,21 @@ public class AgentOpsConfig {
             @Value("${agentops.llm.api-key:}") String apiKey,
             @Value("${agentops.llm.model:deepseek-chat}") String model) {
         return new OpenAIModelClient(baseUrl, apiKey, model);
+    }
+
+    // ---- 推理循环 + 领域编排 Bean（V1.7 编排下沉）----
+
+    @Bean
+    ReasoningLoop reasoningLoop(ModelClient modelClient, Tracer tracer,
+                                @Value("${agentops.llm.model:deepseek-chat}") String modelName) {
+        return new DefaultReasoningLoop(modelClient, tracer, modelName);
+    }
+
+    @Bean
+    DiagnosisOrchestrator diagnosisOrchestrator(ReasoningLoop reasoningLoop,
+                                                PromptRegistry promptRegistry,
+                                                WorkflowEngine workflowEngine) {
+        return new DiagnosisOrchestrator(reasoningLoop, promptRegistry, workflowEngine);
     }
 
     // ---- 领域 Agent Bean ----

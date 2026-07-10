@@ -4,6 +4,96 @@ All notable changes to AgentOps Platform will be documented in this file.
 
 ## V1.0 (in progress)
 
+### Refactor — 恢复模块边界：编排三层下沉（v1.7.0）
+
+将 `DiagnosisService` 膨胀的编排逻辑按 `delivery → domain → runtime` 三层下沉，消除 V1.0~V1.6 迭代过程中边界渐进侵蚀产生的技术债。详见 `DECISIONS/ADR-002-module-boundary-orchestration-sinkdown.md`。
+
+#### Added — agent-runtime 通用推理循环
+
+- `ReasoningLoop` 接口 — 封装 LLM 调用 + 自动工具循环 + 工具执行的通用编排能力（provider-agnostic，不含领域逻辑），可被所有领域 Agent 复用
+- `DefaultReasoningLoop` 实现 — 含 `llm.chat` Span 打标 + 耗时日志 + 自动工具循环（maxRounds 上限）+ 工具参数 JSON 解析
+- `agent-runtime/pom.xml` 新增 micrometer-tracing / slf4j-api / jackson-databind 依赖
+- `DefaultReasoningLoopTest` — 8 项单测覆盖 callLlm / runWithAutoToolLoop（无工具/一轮/maxRounds）/ executeToolCall（已注册/未知/重载）/ countToolRounds
+
+#### Added — business-exception-agent 领域编排
+
+- `DiagnosisOrchestrator` — 从 `DiagnosisService` 下沉所有领域编排（诊断分支、多源上下文构建、System Prompt 渲染、报告 JSON 解析、fallback）
+- `ProjectInfo` record — delivery→domain 数据载体，避免领域层依赖 `agent-repository` 的 `ProjectEntity`
+- `DiagnosisOutcome` record — 编排器返回 delivery 的完整产出（report + rawContent + messages）
+- `DiagnosisOrchestratorTest` — 7 项单测覆盖堆栈模式/纯日志/JSON 失败 fallback/无项目上下文/repoPath null/markdown 包裹/traceId 透传
+
+#### Changed — agent-api delivery 瘦身
+
+- `DiagnosisService` 从 ~400 行编排大脑重写为 delivery 适配层：移除 `ModelClient` 直接依赖，`diagnose()` 委托 `DiagnosisOrchestrator.diagnose()`，`chat()`/`continueWithTools()` 改用 `ReasoningLoop.callLlm()` / `executeToolCall()`
+- `AgentOpsConfig` 注册 `ReasoningLoop` + `DiagnosisOrchestrator` Bean（保留 `businessExceptionAgent` Bean — 构造副作用注册诊断工作流，`DiagnosisOrchestrator.parseStackTrace()` 依赖之）
+
+#### Removed — 死代码清理
+
+- `BusinessExceptionAgent.diagnose()` — V0.1 占位方法，返回硬编码"待 LLM 分析"报告，从未被调用（`DiagnosisOrchestrator` 直接通过 `workflowEngine.execute()` 调用工作流）
+- 连带清理：write-only `engine` 字段、未用的 `WorkflowContext` import
+
+#### Docs
+
+- `ARCHITECTURE.md` 新增 "Module Boundaries (V1.7)" 段（三层职责表 + 依赖方向 + 隔离机制）
+- `DECISIONS/ADR-002-module-boundary-orchestration-sinkdown.md` — 记录边界侵蚀根因、三层下沉决策、备选方案、教训（功能迭代时需用 ARCHITECTURE 边界清单做回归校验）
+- `openwiki/domain/business-exception.md` 最小修正过时描述
+
+### Feature — 可观测流程日志（v1.6.0）
+
+#### Added — 日志基础设施
+
+- `agent-api/src/main/resources/logback-spring.xml` — 新建 console appender，日志 pattern 含 `%X{traceId}`/`%X{spanId}`（Micrometer Tracing 自动注入 MDC），`com.agentops=DEBUG` 级别让开发期可见工具层 DEBUG 日志，`org.apache.ibatis=WARN` 降噪
+- `agent-tools/pom.xml` 新增 `slf4j-api` 依赖（版本由 spring-boot-starter-parent 管理）
+
+#### Changed — Controller 层日志
+
+- `DiagnosisController` 加 SLF4J Logger — 3 个端点（`diagnose`/`chat`/`continueChat`）加 INFO 入口/出口日志，catch 块加 WARN 异常日志
+
+#### Changed — Service 层日志
+
+- `DiagnosisService` 加 SLF4J Logger — 按方法加流程日志：
+  - INFO 骨架：`diagnose` 入口（mode/hasStackTrace/hasLogContent）+ 分支选择、`chat` 入口/出口、`continueWithTools` 入口/循环/出口、`runDiagnosisWithToolLoop` 每轮 round+toolCalls 数 + 结束汇总、`callLlm` 含 model/temp/finishReason/耗时 ms、`finishDiagnosis` 出口含 severity/confidence
+  - DEBUG 细节：`executeStackTraceDiagnosis`/`executeLogOnlyDiagnosis` 参数、`executeToolCall`（两重载）tool name+success、`buildMultiSourceContext`/`buildMultiSourceContextForLogOnly` 各源采集状态、`resolveToolRegistry` 是否 fallback
+  - WARN：`parseDiagnosisReport` JSON 解析失败时记录
+
+#### Changed — 工具层日志
+
+- `InMemoryToolRegistry` 加 Logger — `register()` INFO（工具名+描述，启动时可见 7 个工具注册），`unregister()` DEBUG
+- `RouteLookupTool` 加 Logger — `getRoutes()` 首次构建 INFO（repoPath+routes 数+耗时 ms），`lookup()` DEBUG（queryPath+method+命中数）
+- `SearchCodeTool` 加 Logger — `search()` DEBUG（pattern+filePattern+命中数+耗时 ms）
+
+### Fix — 追问 Prompt 外部化并更新工具列表（v1.5.0）
+
+#### Changed — follow-up prompt 外部化
+
+- `prompts/follow-up-system.txt` — 新建追问 System Prompt 模板，工具列表补齐 `route-lookup`/`search-code`/`read-source`（原硬编码常量漏列 read-source 及两个新工具），追问策略更新为：判断是否需要工具 → 入口定位 → read-source 读取 → git/log 辅助
+- `DiagnosisService` — 移除硬编码 `FOLLOW_UP_SYSTEM_PROMPT` 常量，`buildFollowUpMessages` 改为从 `PromptRegistry` 加载 `follow-up-system` 模板，遵守 AGENTS.md「prompt 不硬编码在 Java 中」约束
+
+### Feature — 源码分析工具增强：route-lookup + search-code（v1.5.0）
+
+#### Added — route-lookup 工具（接口路径反查源码）
+
+- `RouteLookupTool` — 用 JavaParser 扫描 Spring Web 注解（`@RequestMapping`/`@GetMapping`/`@PostMapping` 等），组合 class-level 前缀和 method-level 路径构建路由表。LLM 可从日志/访问日志中的接口路径（如 `POST /api/orders`）反查到 Controller 方法的源码文件和行号
+- 匹配策略：精确匹配优先，无精确匹配时前缀匹配（覆盖 `/api/orders/123` 匹配到 `/api/orders`）；可选 `method` 过滤；`@RequestMapping` 不带 method 属性视为 ANY
+- 路由表懒缓存（volatile + 双检锁），首次调用构建后复用，不监听文件变更（v1 限制：进程重启即刷新）
+- `RouteLookupToolTest` — 15 项单元测试覆盖路由构建/精确/前缀/方法过滤/无 class prefix/不存在/空仓库/跳 target 目录/定义/执行器/缓存一致性/combinePath 归一化
+
+#### Added — search-code 工具（文本反查源码）
+
+- `SearchCodeTool` — 纯 Java NIO + `Pattern` 正则在代码仓库中搜索源码，定位日志/异常消息的抛出位置。LLM 可从日志中的错误消息字面量（如 "订单创建失败"）找到抛出该日志/异常的源码位置
+- 跳过 `.git`/`target`/`build`/`node_modules` 等非源码目录；按 `filePattern` 通配过滤文件名（默认 `*.java`）；`maxResults` 截断（上限 50）；长行截断（>200 字符加 `...`）
+- `SearchCodeToolTest` — 14 项单元测试覆盖字面量/正则/大小写/filePattern 过滤/maxResults 截断/跳 target/不命中/长行截断/无效正则/仓库不存在/定义/执行器/默认参数
+
+#### Added — ADR 与依赖
+
+- `DECISIONS/ADR-001-javaparser-for-code-analysis.md` — 记录引入 `javaparser-core`（不含 symbol-solver，避免 guava 传递依赖）的决策，仅用于 agent-tools 模块的代码静态分析
+- 根 `pom.xml` 新增 `javaparser.version=3.26.4` 属性 + dependencyManagement 条目；`agent-tools/pom.xml` 新增 javaparser-core 依赖
+
+#### Changed — 工具注册与诊断 Prompt
+
+- `AgentOpsConfig.toolRegistry()` 注册 route-lookup + search-code（总工具数 5 → 7，`GET /api/tools` 自动包含）
+- `diagnosis-system.txt` 新增「入口工具 — 从线索定位源码位置」段（route-lookup + search-code），工具使用策略流程更新为：入口（接口路径/日志文本）→ 核心（read-source）→ 辅助（git-blame/git-log/git-show）
+
 ### Feature — 增加代码库分析流程：read-source 工具（v1.4.0）
 
 #### Added — read-source 工具（源码定位核心工具）

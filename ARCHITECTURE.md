@@ -76,6 +76,25 @@ Examples:
 - `agent-mcp`
 - `business-exception-agent`
 
+## Module Boundaries (V1.7)
+
+To prevent orchestration logic from leaking into the delivery layer, the
+diagnosis flow is split across three layers with strict dependencies:
+
+| Layer | Module | Responsibility | Must not |
+|-------|--------|----------------|----------|
+| Runtime | `agent-runtime/ReasoningLoop` | Generic LLM call, auto tool loop, tool execution (provider-agnostic) | contain domain logic |
+| Domain | `business-exception-agent/DiagnosisOrchestrator` | Diagnosis branches, multi-source context, prompt rendering, report parsing | depend on `ModelClient` or `agent-repository` |
+| Delivery | `agent-api/DiagnosisService` | HTTP validation, `ProjectEntity`→`ProjectInfo` projection, persistence, conversation history, tracing, follow-up session | own LLM calls or tool loops |
+
+Dependency direction: delivery → domain → runtime. The domain layer talks to
+the runtime through the `ReasoningLoop` interface and to the delivery layer
+through the `ProjectInfo` / `DiagnosisOutcome` records (avoiding a dependency
+on `agent-repository`'s `ProjectEntity`).
+
+See `DECISIONS/ADR-002-module-boundary-orchestration-sinkdown.md` for the
+background and alternatives considered.
+
 ## Key Design Decisions
 
 - Use Java 21 and Spring Boot 3.x.

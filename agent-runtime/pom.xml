@@ -26,5 +26,30 @@
             <artifactId>openai-java</artifactId>
             <version>0.15.0</version>
         </dependency>
+
+        <!-- Micrometer Tracing — for llm.chat span creation in ReasoningLoop -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing</artifactId>
+        </dependency>
+
+        <!-- SLF4J — for structured logging in ReasoningLoop -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Jackson — for tool argument JSON parsing in ReasoningLoop -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Test — JUnit 5 + Mockito (for mocking Tracer/ModelClient) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

@@ -3,7 +3,6 @@ package com.agentops.business.exceptionagent;
 import com.agentops.business.exceptionagent.model.DiagnosisReport;
 import com.agentops.business.exceptionagent.model.StackTrace;
 import com.agentops.business.exceptionagent.model.StackTraceFrame;
-import com.agentops.workflow.WorkflowContext;
 import com.agentops.workflow.WorkflowDefinition;
 import com.agentops.workflow.WorkflowEngine;
 import com.agentops.workflow.WorkflowStep;
@@ -25,14 +24,9 @@ import java.util.regex.Pattern;
  *   <li><b>生成诊断报告</b> — 基于分析结果生成报告（V0.2 接入 LLM）</li>
  * </ol>
  *
- * <p>V0.1 产出诊断工作流骨架。V0.2 将接入 ModelClient 做 LLM 驱动的根因分析。
- *
- * <p>使用示例：
- * <pre>{@code
- *   BusinessExceptionAgent agent = new BusinessExceptionAgent(engine);
- *   String rawTrace = "java.lang.NullPointerException\n\tat com.example.OrderService...";
- *   DiagnosisReport report = agent.diagnose(rawTrace);
- * }</pre>
+ * <p>本类定义并注册堆栈解析工作流（解析 → 过滤项目代码 → 生成报告占位）。
+ * LLM 驱动的领域编排（多源上下文、prompt 渲染、工具循环、报告解析）由
+ * {@link DiagnosisOrchestrator} 承担，delivery 层 {@code DiagnosisService} 委托编排器执行。
  */
 public class BusinessExceptionAgent {
 
@@ -50,35 +44,11 @@ public class BusinessExceptionAgent {
     private static final Pattern FRAME_PATTERN =
             Pattern.compile("at\\s+([\\w.$]+)\\.([\\w<>$]+)\\(([^)]*)\\)");
 
-    private final WorkflowEngine engine;
     private final WorkflowDefinition workflowDefinition;
 
     public BusinessExceptionAgent(WorkflowEngine engine) {
-        this.engine = engine;
         this.workflowDefinition = buildWorkflow();
         engine.register(workflowDefinition);
-    }
-
-    /**
-     * 执行诊断，输入原始堆栈文本，输出结构化诊断报告。
-     *
-     * @param rawStackTrace 原始异常堆栈文本
-     * @return 诊断报告
-     */
-    public DiagnosisReport diagnose(String rawStackTrace) {
-        WorkflowContext input = engine.execute(WORKFLOW_NAME, null);
-        // 简易上下文：直接构建并注入初始数据
-        // 实际实现由 WorkflowEngine 的 execute(definition, context) 负责
-        // 这里演示 Workflow 通过注册名执行的方式
-
-        // 注：当前 execute(name, context) 需要 initialContext，
-        // 由 WorkflowEngine 实现负责创建并注入 rawStackTrace
-        // V0.2 完善此流程
-        return new DiagnosisReport(
-                "诊断工作流骨架已执行（V0.2 接入 LLM）",
-                "unknown", "medium", "待 LLM 分析",
-                "未知", "计划修复", List.of(), List.of(), 0.0, null,
-                List.of(), List.of(), null, List.of());
     }
 
     /**

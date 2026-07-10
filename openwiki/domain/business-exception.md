@@ -46,7 +46,7 @@ Business Exception Agent 是 AgentOps Platform 的第一个（目前唯一的）
 
 **职责**：组装上下文，准备 LLM 调用。
 
-> **当前状态**：`BusinessExceptionAgent.diagnose()` 返回占位 `DiagnosisReport`。实际的 LLM 调用发生在 **`DiagnosisController`** 中（`agent-api` 模块），包括 Prompt 渲染、对话历史加载、JSON 响应解析。两个位置都需要审查以确保一致性。
+> **当前状态（V1.7）**：`BusinessExceptionAgent` 仅定义并注册堆栈解析工作流（解析 → 过滤项目代码 → 生成报告占位）。LLM 驱动的领域编排（多源上下文、Prompt 渲染、工具循环、报告 JSON 解析）由 **`DiagnosisOrchestrator`** 承担（`business-exception-agent` 模块），delivery 层 `DiagnosisService`（`agent-api`）委托编排器执行并负责持久化、对话历史、tracing。三层边界详见 `ARCHITECTURE.md` "Module Boundaries (V1.7)"。
 
 ### 工作流 Context Key 常量
 
@@ -241,8 +241,8 @@ ToolResult (record): success, output, error
 
 ## 变更关注点
 
-- **修改诊断逻辑**：`BusinessExceptionAgent` 工作流步骤和 `DiagnosisController` 的 LLM 调用逻辑**需要同步修改**，当前职责边界模糊
-- **新增工具**：在 `agent-tools` 实现，在 `AgentOpsConfig` 注册，在 `ProjectManager.buildProjectToolRegistry()` 添加绑定逻辑
+- **修改诊断逻辑**：领域编排（诊断分支、多源上下文、Prompt 渲染、报告解析）在 `DiagnosisOrchestrator`；通用 LLM 调用 + 工具循环在 `agent-runtime/ReasoningLoop`；delivery 适配（HTTP 校验、持久化、对话历史）在 `DiagnosisService`。三层边界见 `ARCHITECTURE.md` "Module Boundaries (V1.7)"
+- **新增工具**：在 `agent-tools` 实现，在 `AgentOpsConfig` 注册，在 `MySqlProjectManager.buildProjectToolRegistry()` 添加绑定逻辑
 - **新增日志源类型**：添加 `LogSourceType` 枚举值 + 实现 `LogProvider` 接口 + 在 `InMemoryLogProviderRegistry` 注册
 - **修改数据模型**：`DiagnosisReport` 是 LLM JSON Schema 和 REST API 响应的**同一个结构**，修改字段需同步更新 `diagnosis-system.txt` 中的 JSON Schema
-- **添加单元测试**：此模块当前 **0 个测试**，`BusinessExceptionAgent` 和 `ProjectManager` 是测试的优先目标
+- **添加单元测试**：`DiagnosisOrchestratorTest` 已覆盖领域编排（V1.7），`BusinessExceptionAgent` 工作流步骤可通过 `SequentialWorkflowEngine` 测试
