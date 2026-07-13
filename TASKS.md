@@ -1,5 +1,25 @@
 # Tasks
 
+## V1.7.1 — 端到端诊断流程两处阻断性 bug 修复
+
+Goal: V1.7 三层下沉后启动应用跑端到端诊断流程，发现并修复两处阻断性 bug。
+
+### agent-runtime — 达到 maxRounds 时强制最终无工具调用
+
+- [x] `DefaultReasoningLoop.callLlm()` — 处理 `null` ToolRegistry，传空工具列表而非抛 NPE
+- [x] `DefaultReasoningLoop.runWithAutoToolLoop()` — while 退出后若 `hasToolCalls()` 为 true，追加引导 user 消息 + 以 `null` ToolRegistry 做最终无工具调用，强制 LLM 生成文本回复
+- [x] `DefaultReasoningLoopTest` — 更新 `runWithAutoToolLoop_hitsMaxRounds` → `..._forcesFinalResponseWithoutTools`（8→9 项，验证强制最终无工具调用 + 调用次数）
+
+### business-exception-agent — stripMarkdownFence 更健壮
+
+- [x] `DiagnosisOrchestrator.stripMarkdownFence()` — 改用两步剥离（先 `indexOf("\n")` 截断开头 ```json 行，再 `endsWith("```")` 去结尾），原 `lastIndexOf("```")` 在结尾 ``` 缺失时失败
+- [x] `DiagnosisOrchestratorTest` — 新增 `diagnose_markdownFencedJson_missingClosingFence_parsedCorrectly`（7→8 项）
+
+### 验证
+
+- [x] `mvn test -pl agent-runtime,business-exception-agent` 通过（9 + 8 项，无回归）
+- [x] `mvn spring-boot:run` 启动 + `POST /api/diagnosis` 端到端验证：rounds=8, hasToolCalls=false, contentLen=2811, JSON 解析成功，返回完整 DiagnosisReport（severity=critical, confidence=0.65）
+
 ## V1.7 — 恢复模块边界（编排下沉）
 
 Goal: 将 `DiagnosisService` 膨胀的编排逻辑三层下沉（runtime → domain → delivery），消除边界侵蚀技术债，并记录教训。

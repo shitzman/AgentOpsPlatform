@@ -49,7 +49,7 @@ public class DefaultReasoningLoop implements ReasoningLoop {
             llmSpan.tag("model", modelName);
             ChatRequest request = new ChatRequest(
                     messages,
-                    toolRegistry.listDefinitions(),
+                    toolRegistry != null ? toolRegistry.listDefinitions() : List.of(),
                     modelName,
                     temperature,
                     maxTokens,
@@ -88,6 +88,14 @@ public class DefaultReasoningLoop implements ReasoningLoop {
             tagSpan("toolLoop.round", String.valueOf(round));
 
             response = callLlm(messages, toolRegistry, temperature, maxTokens, responseFormat);
+        }
+
+        // 达到最大轮次但 LLM 仍想调用工具 → 追加引导消息 + 不带工具的最终调用，强制生成文本回复
+        if (response.hasToolCalls()) {
+            log.info("[runWithAutoToolLoop] maxRounds={} reached, forcing final response without tools", maxRounds);
+            messages.add(ChatMessage.user(
+                    "工具调用已达上限。请基于已收集的信息直接生成最终回复，不要再调用工具。"));
+            response = callLlm(messages, null, temperature, maxTokens, responseFormat);
         }
 
         log.info("[runWithAutoToolLoop] finished: rounds={}, hasToolCalls={}, contentLen={}",

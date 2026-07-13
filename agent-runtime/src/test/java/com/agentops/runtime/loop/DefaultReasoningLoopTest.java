@@ -22,6 +22,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 /**
@@ -114,21 +115,40 @@ class DefaultReasoningLoopTest {
     }
 
     @Test
-    @DisplayName("runWithAutoToolLoop 达到 maxRounds 后停止")
-    void runWithAutoToolLoop_hitsMaxRounds() {
+    @DisplayName("runWithAutoToolLoop 达到 maxRounds 后强制最终无工具调用")
+    void runWithAutoToolLoop_hitsMaxRounds_forcesFinalResponseWithoutTools() {
         InMemoryToolRegistry registry = new InMemoryToolRegistry();
         ToolExecutor echo = args -> ToolResult.success("echoed");
         registry.register(new ToolDefinition("echo", "回显", Map.of()), echo);
 
-        when(modelClient.chat(any(ChatRequest.class))).thenReturn(toolResponse("echo"));
+        // 带工具的调用返回 tool_calls，不带工具的最终调用返回文本
+        when(modelClient.chat(any(ChatRequest.class))).thenAnswer(invocation -> {
+            ChatRequest req = invocation.getArgument(0);
+            if (req.tools() == null || req.tools().isEmpty()) {
+                return textResponse("forced final response");
+            }
+            return toolResponse("echo");
+        });
 
         String content = reasoningLoop.runWithAutoToolLoop(
                 singleUserMessage(), registry, 0.2, 1024, null, 2);
 
-        // 达到上限后退出循环，content 为 null（模型始终请求工具，未返回文本）
-        assertNull(content);
-        // 初始 1 次 + 每轮 1 次 × 2 轮 = 3 次
-        verify(modelClient, times(3)).chat(any(ChatRequest.class));
+        // 达到 maxRounds 后，强制做一次不带工具的最终调用，返回文本
+        assertEquals("forced final response", content);
+        // 初始 1 次 + 每轮 1 次 × 2 轮 + 最终无工具 1 次 = 4 次
+        verify(modelClient, times(4)).chat(any(ChatRequest.class));
+    }
+
+    @Test
+    @DisplayName("callLlm 传 null ToolRegistry 时不抛 NPE，请求中工具列表为空")
+    void callLlm_nullToolRegistry_sendsEmptyTools() {
+        when(modelClient.chat(any(ChatRequest.class))).thenReturn(textResponse("ok"));
+
+        ChatResponse actual = reasoningLoop.callLlm(
+                singleUserMessage(), null, 0.2, 1024, null);
+
+        assertEquals("ok", actual.content());
+        verify(modelClient).chat(argThat(req -> req.tools() != null && req.tools().isEmpty()));
     }
 
     @Test

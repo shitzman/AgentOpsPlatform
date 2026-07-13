@@ -148,6 +148,19 @@ class DiagnosisOrchestratorTest {
     }
 
     @Test
+    @DisplayName("LLM 返回缺少结尾 ``` 的 markdown 代码块也能正确解析")
+    void diagnose_markdownFencedJson_missingClosingFence_parsedCorrectly() {
+        String fenced = "```json\n" + VALID_REPORT_JSON;
+        when(reasoningLoop.runWithAutoToolLoop(anyList(), any(), anyDouble(), anyInt(), any(), anyInt()))
+                .thenReturn(fenced);
+
+        DiagnosisOutcome outcome = orchestrator.diagnose(
+                VALID_STACK, null, null, toolRegistry, List.of(), "trace-7");
+
+        assertEquals("NPE in OrderService", outcome.report().summary());
+    }
+
+    @Test
     @DisplayName("traceId 透传到诊断报告")
     void diagnose_carriesTraceId_intoReport() {
         when(reasoningLoop.runWithAutoToolLoop(anyList(), any(), anyDouble(), anyInt(), any(), anyInt()))

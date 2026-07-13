@@ -264,12 +264,16 @@ public class DiagnosisOrchestrator {
     private static String stripMarkdownFence(String json) {
         String trimmed = json.trim();
         if (!trimmed.startsWith("```")) return trimmed;
-        int start = trimmed.indexOf("\n");
-        int end = trimmed.lastIndexOf("```");
-        if (start > 0 && end > start) {
-            return trimmed.substring(start, end).trim();
+        // 去掉开头的 ```json 或 ``` 行
+        int firstNewline = trimmed.indexOf("\n");
+        if (firstNewline > 0) {
+            trimmed = trimmed.substring(firstNewline + 1);
         }
-        return trimmed;
+        // 去掉结尾的 ```
+        if (trimmed.endsWith("```")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 3);
+        }
+        return trimmed.trim();
     }
 
     private static DiagnosisReport fallbackReport(String rawContent, String exceptionType, String traceId) {

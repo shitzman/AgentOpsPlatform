@@ -4,6 +4,29 @@ All notable changes to AgentOps Platform will be documented in this file.
 
 ## V1.0 (in progress)
 
+### Fix — 端到端诊断流程两处阻断性 bug（v1.7.1）
+
+V1.7 三层下沉后通过端到端测试发现两处阻断性 bug：当 LLM 在工具循环中达到 `maxRounds` 上限仍请求工具调用时返回空内容导致 JSON 解析失败；LLM 返回 markdown 代码块包裹的 JSON 时 `stripMarkdownFence` 因结尾 ``` 缺失或位置异常无法正确剥离导致 Jackson 遇到反引号字符解析失败。
+
+#### Fixed — agent-runtime 达到 maxRounds 时强制最终无工具调用
+
+- `DefaultReasoningLoop.callLlm()` — 处理 `null` ToolRegistry，传空工具列表而非抛 NPE（`toolRegistry != null ? toolRegistry.listDefinitions() : List.of()`），`OpenAIModelClient` 已确认空列表时不会向请求体写入 `tools` 字段
+- `DefaultReasoningLoop.runWithAutoToolLoop()` — while 循环退出后若 `response.hasToolCalls()` 为 true，追加引导 user 消息（"工具调用已达上限，请基于已收集的信息直接生成最终回复"）+ 以 `null` ToolRegistry 做最终无工具调用，强制 LLM 生成文本回复
+- `DefaultReasoningLoopTest` — 更新 `runWithAutoToolLoop_hitsMaxRounds` → `runWithAutoToolLoop_hitsMaxRounds_forcesFinalResponseWithoutTools`（验证带工具调用返回 tool_calls、不带工具的最终调用返回文本、调用次数 = 初始 1 + 每轮 1 × 2 + 最终无工具 1 = 4 次）；新增 `callLlm_nullToolRegistry_sendsEmptyTools`（验证传 null ToolRegistry 不抛 NPE 且请求中工具列表为空）
+
+#### Fixed — business-exception-agent stripMarkdownFence 更健壮
+
+- `DiagnosisOrchestrator.stripMarkdownFence()` — 原实现使用 `lastIndexOf("```")` 定位结尾标记，当结尾 ``` 缺失或位置异常时条件 `end > start` 不满足直接返回包含 ``` 的原始内容导致 Jackson 解析失败。改用两步剥离：先用 `indexOf("\n")` 找到开头 ```json 行后的换行符并截断，再用 `endsWith("```")` 检查并去掉结尾 ```
+- `DiagnosisOrchestratorTest` — 新增 `diagnose_markdownFencedJson_missingClosingFence_parsedCorrectly`（验证缺少结尾 ``` 的 markdown 代码块也能正确解析为 DiagnosisReport）
+
+#### Verified — 端到端三次对比
+
+| 测试 | hasToolCalls | contentLen | JSON 解析 | 报告质量 |
+|------|-------------|------------|-----------|----------|
+| 修复前 | true | 0 | 失败（空内容） | fallback (medium, 0.0) |
+| 修复 maxRounds 后 | false | 632 | 失败（```包裹） | fallback (medium, 0.0) |
+| 最终修复后 | false | 2811 | 成功 | 完整报告 (critical, 0.65) |
+
 ### Refactor — 恢复模块边界：编排三层下沉（v1.7.0）
 
 将 `DiagnosisService` 膨胀的编排逻辑按 `delivery → domain → runtime` 三层下沉，消除 V1.0~V1.6 迭代过程中边界渐进侵蚀产生的技术债。详见 `DECISIONS/ADR-002-module-boundary-orchestration-sinkdown.md`。
